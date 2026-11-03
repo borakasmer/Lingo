@@ -1,0 +1,199 @@
+basePath: /
+definitions:
+  Models.Person:
+    properties:
+      age:
+        type: integer
+      gender:
+        type: string
+      id:
+        type: integer
+      isDeleted:
+        type: boolean
+      name:
+        type: string
+    type: object
+  User.BatchUpdateResponse:
+    properties:
+      updatedCount:
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Generic repository ile kullanıcı arama API'si.
+  title: SQL ORM API
+  version: "1.0"
+paths:
+  /api/users:
+    get:
+      description: Adında aranan ifade geçen aktif kullanıcıları listeler.
+      parameters:
+      - description: Aranacak isim
+        example: Bora
+        in: query
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/Models.Person'
+            type: array
+        "400":
+          description: name parametresi zorunludur
+          schema:
+            type: string
+        "405":
+          description: Method not allowed
+          schema:
+            type: string
+        "500":
+          description: Kullanıcılar sorgulanamadı
+          schema:
+            type: string
+      summary: İsme göre kullanıcı ara
+      tags:
+      - Users
+  /api/users/append-x-over-40:
+    post:
+      description: Aktif kullanıcıların yalnızca değişen Name alanını günceller. Bütün
+        gruplar tek transaction içinde çalışır.
+      parameters:
+      - default: 1
+        description: Batch boyutu
+        in: query
+        minimum: 1
+        name: batchSize
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/User.BatchUpdateResponse'
+        "400":
+          description: Geçersiz batchSize
+          schema:
+            type: string
+        "405":
+          description: Method not allowed
+          schema:
+            type: string
+        "500":
+          description: Güncelleme tamamlanamadı
+          schema:
+            type: string
+      summary: Yaşı 40'tan büyük kullanıcıların isimlerine X ekle
+      tags:
+      - Users
+  /api/users/paging:
+    get:
+      description: Aktif kullanıcıları listeler. sortBy boşsa Id kullanılır.
+      parameters:
+      - default: 1
+        description: Sayfa numarası
+        in: query
+        minimum: 1
+        name: page
+        type: integer
+      - default: 10
+        description: Sayfa başına kayıt
+        in: query
+        maximum: 100
+        minimum: 1
+        name: pageSize
+        type: integer
+      - default: Id
+        description: 'Sıralama alanı: Id, Name, Age, Gender'
+        in: query
+        name: sortBy
+        type: string
+      - default: true
+        description: 'true: artan, false: azalan'
+        in: query
+        name: ascending
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/Models.Person'
+            type: array
+        "400":
+          description: Geçersiz parametre
+          schema:
+            type: string
+        "405":
+          description: Method not allowed
+          schema:
+            type: string
+        "500":
+          description: Kullanıcılar sorgulanamadı
+          schema:
+            type: string
+      summary: Kullanıcıları sayfalayarak ve sıralayarak getir
+      tags:
+      - Users
+  /api/users/search:
+    get:
+      description: Cinsiyet eşleşmeli **VE** (yaş belirtilen sınırdan büyük olmalı
+        **VEYA** isim aranan ifadeyi içermeli).
+      parameters:
+      - description: Cinsiyet
+        enum:
+        - Male
+        - Female
+        in: query
+        name: gender
+        required: true
+        type: string
+      - description: Yaş alt sınırı; bu değerden büyük
+        example: 30
+        in: query
+        minimum: 0
+        name: age
+        required: true
+        type: integer
+      - description: İsimde aranacak ifade
+        example: Bor
+        in: query
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/Models.Person'
+            type: array
+        "400":
+          description: Geçersiz arama parametreleri
+          schema:
+            type: string
+        "405":
+          description: Method not allowed
+          schema:
+            type: string
+        "500":
+          description: Kullanıcılar sorgulanamadı
+          schema:
+            type: string
+      summary: AND ve OR koşullarıyla kullanıcı ara
+      tags:
+      - Users
+schemes:
+- http
+swagger: "2.0"
