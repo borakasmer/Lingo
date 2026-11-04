@@ -136,9 +136,49 @@ The SELECT column order follows the mapped model fields; the example above follo
 
 IDs and values above are illustrative: page 2 means the next four rows in the sorted result, not necessarily IDs 5–8. Prefer a unique sort key such as `Id` for stable ordering. Separate requests can still see changes if rows are inserted or deleted between them. If `sortBy` is blank, the demo uses `Id`; `ascending` controls the direction.
 
-#### 5. Paging rules
+<a id="paging--sorting--filters"></a>
 
-See [paging defaults and filtering](#paging--sorting--filters) for normalization, limits, and additional predicates.
+#### 5. Add a filter to the page
+
+Use the same `GetAllWithPaging` method with an additional predicate. This example reads page 2 of names containing `a`, sorted by age descending. This generic repository call supports filters; the basic HTTP paging demo above does not expose a name-filter parameter.
+
+```go
+users, err := repo.GetAllWithPaging(
+    ctx,
+    2,      // page: skip the first page
+    10,     // pageSize
+    "Age",  // sorting field
+    false,  // descending
+    Repository.Filter{
+        Field: "Name",
+        Op:    Repository.OpLike,
+        Value: "%a%",
+    },
+)
+```
+
+#### 6. Defaults & limits
+
+| Input to `GetAllWithPaging` | Behavior |
+|---|---|
+| `page < 1` | Use page `1` |
+| `pageSize < 1` | Use `10` |
+| `pageSize > 100` | Use `100` |
+| No sorting field on a model with `Id` | `Id ASC` |
+| Invalid sorting field | Return an error |
+| `CreatedDate` sorting column missing in SQL | List/paging query retries with `Id`, keeping filters, direction, and paging |
+
+All mapped fields may be used for sorting. For repeatable paging, prefer a unique sorting field such as `Id`; equal sort values have no guaranteed relative order.
+
+#### 7. Alternative: direct `FindMany` paging
+
+The compact form is available too:
+
+```go
+users, err := repo.FindMany(ctx, 2, 10, "Age", false)
+```
+
+The default/cap normalization above belongs to `GetAllWithPaging`; direct `FindMany` paging arguments must be positive. One integer passed to `FindMany` means page size, with page `1`.
 
 <a id="join-tables-keep-the-sql-explicit"></a>
 
@@ -718,42 +758,6 @@ The Go version expresses the same predicate through `Filter`, `And`, and `Or`. F
 | `OpLike` | `LIKE` | SQL pattern matching |
 
 For an untyped `nil` value, `OpEq` produces `IS NULL` and `OpNe` produces `IS NOT NULL`.
-
-<a id="paging--sorting--filters"></a>
-
-## Paging Reference — Defaults & Filters
-
-![Paging Reference — Defaults & Filters](assets/readme/section-paging--sorting--filters.png)
-
-```go
-users, err := repo.GetAllWithPaging(
-    ctx,
-    2,      // page: skip the first page
-    10,     // pageSize
-    "Age",  // sorting field
-    false,  // descending
-    Repository.Filter{Field: "Name", Op: Repository.OpLike, Value: "%a%"},
-)
-```
-
-| Input to `GetAllWithPaging` | Behavior |
-|---|---|
-| `page < 1` | Use page `1` |
-| `pageSize < 1` | Use `10` |
-| `pageSize > 100` | Use `100` |
-| No sorting field on a model with `Id` | `Id ASC` |
-| Invalid sorting field | Return an error |
-| `CreatedDate` sorting column missing in SQL | List/paging query retries with `Id`, keeping filters, direction, and paging |
-
-All mapped fields may be used for sorting. For repeatable paging, prefer a unique sorting field such as `Id`; equal sort values have no guaranteed relative order.
-
-The compact form is available too:
-
-```go
-users, err := repo.FindMany(ctx, 2, 10, "Age", false)
-```
-
-The default/cap normalization above belongs to `GetAllWithPaging`; direct `FindMany` paging arguments must be positive. One integer passed to `FindMany` means page size, with page `1`.
 
 <a id="update-only-what-changed"></a>
 
