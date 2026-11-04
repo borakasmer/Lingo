@@ -41,7 +41,7 @@ Generic repositories, composable filters, changed-field updates, and explicit tr
 The idea is simple: express the query intent in Go, keep the generated SQL understandable, and make transaction boundaries visible. Result models are generic; field names and operators are checked at runtime.
 
 <p align="center">
-  <img src="assets/readme/query-flow.gif" alt="Query flow: UserRepository defines the intent, Repository[T] builds SQL and parameters, SQL Server executes the command, and typed model values are returned." width="100%">
+  <img src="assets/readme/execution-flow.gif" alt="Query flow: UserRepository defines the intent, Repository[T] builds SQL and parameters, SQL Server executes the command, and typed model values are returned." width="100%">
 </p>
 
 <p align="center">
