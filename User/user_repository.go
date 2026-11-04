@@ -30,6 +30,9 @@ func NewUserRepository(db *sql.DB) (*UserRepository, error) {
 	}, nil
 }
 
+// likeEscaper, SQL Server LIKE joker karakterlerini köşeli parantezle kaçırır.
+var likeEscaper = strings.NewReplacer("[", "[[]", "%", "[%]", "_", "[_]")
+
 func (repo *UserRepository) GetByName(
 	ctx context.Context,
 	name string,
@@ -39,7 +42,7 @@ func (repo *UserRepository) GetByName(
 		Repository.Filter{
 			Field: "Name",
 			Op:    Repository.OpLike,
-			Value: "%" + name + "%",
+			Value: "%" + likeEscaper.Replace(name) + "%",
 		},
 		Repository.Filter{
 			Field: "IsDeleted",
@@ -98,7 +101,7 @@ func (repo *UserRepository) SearchUsers(
 				Repository.Filter{
 					Field: "Name",
 					Op:    Repository.OpLike,
-					Value: "%" + name + "%",
+					Value: "%" + likeEscaper.Replace(name) + "%",
 				},
 			),
 		),
