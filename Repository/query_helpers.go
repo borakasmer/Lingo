@@ -3,8 +3,20 @@ package Repository
 import (
 	"database/sql"
 	"fmt"
+	"reflect"
 	"strings"
 )
+
+// isNullValue, SQL NULL anlamına gelen değerleri tanır: untyped nil ve nil pointer.
+func isNullValue(value any) bool {
+	if value == nil {
+		return true
+	}
+
+	v := reflect.ValueOf(value)
+
+	return v.Kind() == reflect.Pointer && v.IsNil()
+}
 
 // startIndex, parametre numaralandırmasının başlangıcıdır.
 // SELECT için 1; UPDATE'te SET parametrelerinden sonraki sayı verilir.
@@ -38,7 +50,7 @@ func buildWhere(
 			column := quoteIdentifier(field.Column)
 
 			// SQL'de NULL karşılaştırması = ile yapılmaz.
-			if expr.Value == nil {
+			if isNullValue(expr.Value) {
 				switch expr.Op {
 				case OpEq:
 					return column + " IS NULL", nil

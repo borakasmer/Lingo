@@ -125,16 +125,14 @@ func (repo *Repository[T]) parseQuery(params []any) (queryOptions, error) {
 		case Expr:
 			q.filters = append(q.filters, value)
 		case string:
-			if strings.EqualFold(value, "CreatedDate") {
+			field, err := findModelField(repo.fields, value)
+			if err == nil {
+				q.orderBy = field.Column
+			} else if strings.EqualFold(value, "CreatedDate") {
 				// Modelde tanımlı olmasa da SQL'de sıralamayı deneyebiliriz.
 				q.orderBy = "CreatedDate"
 			} else {
-				field, err := findModelField(repo.fields, value)
-				if err != nil {
-					return q, err
-				}
-
-				q.orderBy = field.Column
+				return q, err
 			}
 		case bool:
 			q.ascending = value

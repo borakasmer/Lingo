@@ -442,6 +442,15 @@ func (h *UserHandler) DeleteUsersFromID(
 			Value: minID,
 		},
 	)
+	if err != nil {
+		log.Printf("Toplu kullanıcı silme başarısız: %v", err)
+		http.Error(
+			w,
+			"Kullanıcılar silinemedi",
+			http.StatusInternalServerError,
+		)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 

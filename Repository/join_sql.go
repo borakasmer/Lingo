@@ -235,7 +235,7 @@ func buildJoinConditions(
 					otherColumn, nil
 			}
 
-			if expr.Value == nil {
+			if isNullValue(expr.Value) {
 				switch expr.Op {
 				case OpEq:
 					return column + " IS NULL", nil
