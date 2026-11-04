@@ -190,6 +190,16 @@ func (repo *Repository[T]) selectSQL(one bool, params []any) (string, []any, err
 		query += " DESC"
 	}
 	if !one && options.pageSize > 0 {
+		// Eşit değerli satırların sayfalar arasında tekrar etmemesi veya
+		// atlanmaması için sıralamaya benzersiz varsayılan kolon eklenir.
+		if !strings.EqualFold(options.orderBy, repo.defaultOrder) {
+			query += ", " + quoteIdentifier(repo.defaultOrder)
+			if options.ascending {
+				query += " ASC"
+			} else {
+				query += " DESC"
+			}
+		}
 		query += " OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY"
 		args = append(args, sql.Named("offset", (options.page-1)*options.pageSize), sql.Named("pageSize", options.pageSize))
 	}
