@@ -236,3 +236,55 @@ func (repo *UserRepository) GetUserPermissions(
 
 	return names, nil
 }
+
+func (repo *UserRepository) InsertSampleUsers(
+	ctx context.Context,
+) (int64, error) {
+	type userInsert struct {
+		Name     string
+		Age      int
+		UserName string `db:"Username"`
+		Password string
+		Gender   string
+	}
+
+	insertRepository, err := Repository.NewRepository[userInsert](
+		repo.db,
+		"dbo.GoUsers",
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	users := []userInsert{
+		{
+			Name:     "X",
+			UserName: "sample_x",
+			Password: "demo-only-not-for-login",
+			Age:      25,
+			Gender:   "Male",
+		},
+		{
+			Name:     "Y",
+			UserName: "sample_y",
+			Password: "demo-only-not-for-login",
+			Age:      30,
+			Gender:   "Female",
+		},
+		{
+			Name:     "Z",
+			UserName: "sample_z",
+			Password: "demo-only-not-for-login",
+			Age:      35,
+			Gender:   "Male",
+		},
+	}
+
+	return insertRepository.BulkInsertBatched(ctx, users, 3)
+}
+func (repo *UserRepository) DeleteUsersWithFilter(
+	ctx context.Context,
+	filters ...Repository.Expr,
+) (int64, error) {
+	return repo.repository.DeleteWhere(ctx, filters...)
+}

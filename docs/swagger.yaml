@@ -25,6 +25,16 @@ definitions:
       updatedCount:
         type: integer
     type: object
+  User.BulkInsertResponse:
+    properties:
+      insertedCount:
+        type: integer
+    type: object
+  User.DeleteUsersResponse:
+    properties:
+      deletedCount:
+        type: integer
+    type: object
 host: localhost:8080
 info:
   contact: {}
@@ -98,6 +108,62 @@ paths:
           schema:
             type: string
       summary: Yaşı 40'tan büyük kullanıcıların isimlerine X ekle
+      tags:
+      - Users
+  /api/users/bulk-delete:
+    delete:
+      description: Id >= minID olan tüm kullanıcıları kalıcı siler. IsDeleted durumuna
+        bakmaz.
+      parameters:
+      - description: Silinecek minimum kullanıcı ID
+        example: 40
+        in: query
+        minimum: 1
+        name: minID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/User.DeleteUsersResponse'
+        "400":
+          description: minID pozitif bir sayı olmalı
+          schema:
+            type: string
+        "405":
+          description: Method not allowed
+          schema:
+            type: string
+        "500":
+          description: Kullanıcılar silinemedi
+          schema:
+            type: string
+      summary: ID sınırına göre kullanıcıları kalıcı sil
+      tags:
+      - Users
+  /api/users/bulk-insert:
+    post:
+      description: Üç örnek kullanıcıyı BulkInsertBatched ile ekler. Her çağrıda yeni
+        kayıtlar oluşturur.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/User.BulkInsertResponse'
+        "405":
+          description: Method not allowed
+          schema:
+            type: string
+        "500":
+          description: Kullanıcılar eklenemedi
+          schema:
+            type: string
+      summary: X, Y ve Z kullanıcılarını toplu ekle
       tags:
       - Users
   /api/users/paging:

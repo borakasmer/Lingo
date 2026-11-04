@@ -894,3 +894,28 @@ func Gt(field string, value any) Filter {
 func EqColumn(left, right string) Filter {
 	return Eq(left, ColumnRef{Field: right})
 }
+
+// DeleteWhere, filtreye uyan kayıtları kalıcı olarak siler.
+// IsDeleted durumuna bakmaz. Filtresiz silmeye izin vermez.
+func (repo *Repository[T]) DeleteWhere(
+	ctx context.Context,
+	filters ...Expr,
+) (int64, error) {
+	where, args, err := buildWhere(repo.fields, 1, filters...)
+	if err != nil {
+		return 0, err
+	}
+
+	if strings.TrimSpace(where) == "" {
+		return 0, fmt.Errorf("DeleteWhere için filtre belirtilmeli")
+	}
+
+	query := "DELETE FROM " + repo.table + where
+
+	result, err := repo.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return 0, fmt.Errorf("kalıcı silme başarısız: %w", err)
+	}
+
+	return result.RowsAffected()
+}

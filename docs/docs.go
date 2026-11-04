@@ -115,6 +115,87 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/users/bulk-delete": {
+            "delete": {
+                "description": "Id \u003e= minID olan tüm kullanıcıları kalıcı siler. IsDeleted durumuna bakmaz.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "ID sınırına göre kullanıcıları kalıcı sil",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "example": 40,
+                        "description": "Silinecek minimum kullanıcı ID",
+                        "name": "minID",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/User.DeleteUsersResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "minID pozitif bir sayı olmalı",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method not allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Kullanıcılar silinemedi",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/users/bulk-insert": {
+            "post": {
+                "description": "Üç örnek kullanıcıyı BulkInsertBatched ile ekler. Her çağrıda yeni kayıtlar oluşturur.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "X, Y ve Z kullanıcılarını toplu ekle",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/User.BulkInsertResponse"
+                        }
+                    },
+                    "405": {
+                        "description": "Method not allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Kullanıcılar eklenemedi",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/users/paging": {
             "get": {
                 "description": "Aktif kullanıcıları listeler. sortBy boşsa Id kullanılır.",
@@ -355,6 +436,22 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "updatedCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "User.BulkInsertResponse": {
+            "type": "object",
+            "properties": {
+                "insertedCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "User.DeleteUsersResponse": {
+            "type": "object",
+            "properties": {
+                "deletedCount": {
                     "type": "integer"
                 }
             }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sqlOrm/Repository"
 	"strconv"
 	"strings"
 
@@ -351,6 +352,102 @@ func (h *UserHandler) GetUserPermissions(
 	if err := json.NewEncoder(w).Encode(
 		Models.UserPermissionResponse{Actions: actions},
 	); err != nil {
+		log.Printf("JSON yanıtı yazılamadı: %v", err)
+	}
+}
+
+type BulkInsertResponse struct {
+	InsertedCount int64 `json:"insertedCount"`
+}
+
+// InsertSampleUsers godoc
+// @Summary X, Y ve Z kullanıcılarını toplu ekle
+// @Description Üç örnek kullanıcıyı BulkInsertBatched ile ekler. Her çağrıda yeni kayıtlar oluşturur.
+// @Tags Users
+// @Produce json
+// @Success 200 {object} BulkInsertResponse
+// @Failure 405 {string} string "Method not allowed"
+// @Failure 500 {string} string "Kullanıcılar eklenemedi"
+// @Router /api/users/bulk-insert [post]
+func (h *UserHandler) InsertSampleUsers(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	count, err := h.repository.InsertSampleUsers(r.Context())
+	if err != nil {
+		log.Printf("Toplu kullanıcı ekleme başarısız: %v", err)
+		http.Error(
+			w,
+			"Kullanıcılar eklenemedi",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	if err := json.NewEncoder(w).Encode(BulkInsertResponse{
+		InsertedCount: count,
+	}); err != nil {
+		log.Printf("JSON yanıtı yazılamadı: %v", err)
+	}
+}
+
+type DeleteUsersResponse struct {
+	DeletedCount int64 `json:"deletedCount"`
+}
+
+// DeleteUsersFromID godoc
+// @Summary ID sınırına göre kullanıcıları kalıcı sil
+// @Description Id >= minID olan tüm kullanıcıları kalıcı siler. IsDeleted durumuna bakmaz.
+// @Tags Users
+// @Produce json
+// @Param minID query int true "Silinecek minimum kullanıcı ID" minimum(1) example(40)
+// @Success 200 {object} DeleteUsersResponse
+// @Failure 400 {string} string "minID pozitif bir sayı olmalı"
+// @Failure 405 {string} string "Method not allowed"
+// @Failure 500 {string} string "Kullanıcılar silinemedi"
+// @Router /api/users/bulk-delete [delete]
+func (h *UserHandler) DeleteUsersFromID(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodDelete {
+		w.Header().Set("Allow", http.MethodDelete)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	minID, err := strconv.Atoi(r.URL.Query().Get("minID"))
+	if err != nil || minID <= 0 {
+		http.Error(
+			w,
+			"minID pozitif bir sayı olmalı",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	count, err := h.repository.DeleteUsersWithFilter(
+		r.Context(),
+		Repository.Filter{
+			Field: "Id",
+			Op:    Repository.OpGte,
+			Value: minID,
+		},
+	)
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	if err := json.NewEncoder(w).Encode(DeleteUsersResponse{
+		DeletedCount: count,
+	}); err != nil {
 		log.Printf("JSON yanıtı yazılamadı: %v", err)
 	}
 }

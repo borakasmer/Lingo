@@ -71,6 +71,8 @@ func main() {
 		"/api/users/permissions",
 		userHandler.GetUserPermissions,
 	)
+	mux.HandleFunc("/api/users/bulk-insert", userHandler.InsertSampleUsers)
+	mux.HandleFunc("/api/users/bulk-delete", userHandler.DeleteUsersFromID)
 
 	mux.Handle("/swagger/", httpSwagger.Handler(
 		httpSwagger.URL("/swagger/doc.json"),
