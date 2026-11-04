@@ -292,7 +292,9 @@ func (repo *Repository[T]) selectRows(
 }
 
 // Get/FindMany return [] for an empty result. All mapped fields are selected.
-// No soft-delete predicate is injected: pass IsDeleted=false explicitly when needed.
+// The active-row predicate ISNULL([IsDeleted], 0) = 0 is added automatically,
+// so the target table needs an IsDeleted column. An extra IsDeleted=false
+// filter is unnecessary (and would exclude NULL rows).
 func (repo *Repository[T]) Get(ctx context.Context, params ...any) ([]T, error) {
 	return repo.selectRows(ctx, false, params)
 }
