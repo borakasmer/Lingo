@@ -27,3 +27,13 @@ type UserPermissionResult struct {
 type UserPermissionResponse struct {
 	Actions []string `json:"actions"`
 }
+type ActionDefinition struct {
+	ActionNumber   int
+	ActionName     string
+	IdGoController int
+	IsDeleted      bool
+}
+
+func (ActionDefinition) TableName() string {
+	return "dbo.GoActions"
+}

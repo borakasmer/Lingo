@@ -874,3 +874,23 @@ func JoinFindOne[R any](
 
 	return joinFindOne[R](ctx, query.inner)
 }
+
+func Eq(field string, value any) Filter {
+	return Filter{
+		Field: field,
+		Op:    OpEq,
+		Value: value,
+	}
+}
+
+func Gt(field string, value any) Filter {
+	return Filter{
+		Field: field,
+		Op:    OpGt,
+		Value: value,
+	}
+}
+
+func EqColumn(left, right string) Filter {
+	return Eq(left, ColumnRef{Field: right})
+}

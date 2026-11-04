@@ -150,13 +150,6 @@ func (repo *UserRepository) GetUserPermissions(
 	userID int,
 	controllerID int,
 ) ([]string, error) {
-	// Bu örneğe özel modeller yalnızca bu metotta kullanılır.
-	type actionDefinition struct {
-		ActionNumber   int
-		ActionName     string
-		IdGoController int
-		IsDeleted      bool
-	}
 
 	type permissionResult struct {
 		ActionNumberTotal int
@@ -174,10 +167,7 @@ func (repo *UserRepository) GetUserPermissions(
 		return nil, err
 	}
 
-	actions, err := Repository.NewRepository[actionDefinition](
-		repo.db,
-		"dbo.GoActions",
-	)
+	actions, err := Repository.NewRepository[Models.ActionDefinition](repo.db)
 	if err != nil {
 		return nil, err
 	}
@@ -185,38 +175,19 @@ func (repo *UserRepository) GetUserPermissions(
 	query := users.Join("u").
 		InnerJoin(
 			userActions.JoinSource("ua"),
-			Repository.Filter{
-				Field: "ua.IdUser",
-				Op:    Repository.OpEq,
-				Value: Repository.ColumnRef{Field: "u.Id"},
-			},
+			Repository.EqColumn("ua.IdUser", "u.Id"),
 		).
 		InnerJoin(
 			actions.JoinSource("a"),
-			Repository.Filter{
-				Field: "a.IdGoController",
-				Op:    Repository.OpEq,
-				Value: Repository.ColumnRef{
-					Field: "ua.IdGoController",
-				},
-			},
+			Repository.EqColumn(
+				"a.IdGoController",
+				"ua.IdGoController",
+			),
 		).
 		Where(
-			Repository.Filter{
-				Field: "u.Id",
-				Op:    Repository.OpEq,
-				Value: userID,
-			},
-			Repository.Filter{
-				Field: "ua.IdGoController",
-				Op:    Repository.OpEq,
-				Value: controllerID,
-			},
-			Repository.Filter{
-				Field: "a.ActionNumber",
-				Op:    Repository.OpGt,
-				Value: 0,
-			},
+			Repository.Eq("u.Id", userID),
+			Repository.Eq("ua.IdGoController", controllerID),
+			Repository.Gt("a.ActionNumber", 0),
 		).
 		Select(
 			Repository.SelectColumn{
