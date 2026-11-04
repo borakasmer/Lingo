@@ -277,6 +277,12 @@ func buildJoinConditions(
 			}
 
 			if len(parts) == 0 {
+				// Öğesiz OR (ör. boş bir id listesinden) hiçbir satırla eşleşmez;
+				// atlanırsa çevreleyen AND koşulu sessizce genişler.
+				if expr.Logic == LogicOr && len(expr.Items) == 0 {
+					return "1 = 0", nil
+				}
+
 				return "", nil
 			}
 
