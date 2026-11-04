@@ -2,9 +2,34 @@ package Repository
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
+	"reflect"
 	"strings"
 )
+
+// isNullValue, SQL NULL anlamına gelen değerleri tanır: untyped nil, nil pointer
+// ve NULL üreten driver.Valuer.
+func isNullValue(value any) bool {
+	if value == nil {
+		return true
+	}
+
+	v := reflect.ValueOf(value)
+
+	if v.Kind() == reflect.Pointer && v.IsNil() {
+		return true
+	}
+
+	// sql.NullString{} gibi Valuer'lar da geçersizken NULL üretir.
+	if valuer, ok := value.(driver.Valuer); ok {
+		converted, err := valuer.Value()
+
+		return err == nil && converted == nil
+	}
+
+	return false
+}
 
 // startIndex, parametre numaralandırmasının başlangıcıdır.
 // SELECT için 1; UPDATE'te SET parametrelerinden sonraki sayı verilir.
@@ -38,7 +63,7 @@ func buildWhere(
 			column := quoteIdentifier(field.Column)
 
 			// SQL'de NULL karşılaştırması = ile yapılmaz.
-			if expr.Value == nil {
+			if isNullValue(expr.Value) {
 				switch expr.Op {
 				case OpEq:
 					return column + " IS NULL", nil
@@ -85,6 +110,12 @@ func buildWhere(
 			}
 
 			if len(parts) == 0 {
+				// Öğesiz OR (ör. boş bir id listesinden) hiçbir satırla eşleşmez;
+				// atlanırsa çevreleyen AND koşulu sessizce genişler.
+				if expr.Logic == LogicOr && len(expr.Items) == 0 {
+					return "1 = 0", nil
+				}
+
 				return "", nil
 			}
 

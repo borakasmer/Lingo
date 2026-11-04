@@ -16,8 +16,6 @@ import (
 	"sqlOrm/Models"
 	"strings"
 
-	_ "sqlOrm/Models"
-
 	mssql "github.com/microsoft/go-mssqldb"
 )
 
@@ -90,6 +88,19 @@ func NewRepository[T any](db *sql.DB, tableName ...string) (*Repository[T], erro
 	return &Repository[T]{db: db, table: table, fields: fields, columns: strings.Join(columns, ", "), defaultOrder: order}, nil
 }
 
+// softDeleteColumn, otomatik aktif-satır koşulunda kullanılacak kolonu döndürür.
+// Modelde IsDeleted alanı db etiketiyle eşlenmişse eşlenen kolon, aksi halde
+// "IsDeleted" kullanılır (JOIN yolu da eşlenen kolonu kullanır).
+func (repo *Repository[T]) softDeleteColumn() string {
+	for _, field := range repo.fields {
+		if strings.EqualFold(field.Name, "IsDeleted") {
+			return quoteIdentifier(field.Column)
+		}
+	}
+
+	return quoteIdentifier("IsDeleted")
+}
+
 // quoteSQLName supports Table or Schema.Table. These names are developer-supplied.
 func quoteSQLName(name string) (string, error) {
 	parts := strings.Split(name, ".")
@@ -125,16 +136,14 @@ func (repo *Repository[T]) parseQuery(params []any) (queryOptions, error) {
 		case Expr:
 			q.filters = append(q.filters, value)
 		case string:
-			if strings.EqualFold(value, "CreatedDate") {
+			field, err := findModelField(repo.fields, value)
+			if err == nil {
+				q.orderBy = field.Column
+			} else if strings.EqualFold(value, "CreatedDate") {
 				// Modelde tanımlı olmasa da SQL'de sıralamayı deneyebiliriz.
 				q.orderBy = "CreatedDate"
 			} else {
-				field, err := findModelField(repo.fields, value)
-				if err != nil {
-					return q, err
-				}
-
-				q.orderBy = field.Column
+				return q, err
 			}
 		case bool:
 			q.ascending = value
@@ -177,9 +186,9 @@ func (repo *Repository[T]) selectSQL(one bool, params []any) (string, []any, err
 		return "", nil, err
 	}
 	if where == "" {
-		where = " WHERE ISNULL(" + quoteIdentifier("IsDeleted") + ", 0) = 0"
+		where = " WHERE ISNULL(" + repo.softDeleteColumn() + ", 0) = 0"
 	} else {
-		where += " AND ISNULL(" + quoteIdentifier("IsDeleted") + ", 0) = 0"
+		where += " AND ISNULL(" + repo.softDeleteColumn() + ", 0) = 0"
 	}
 	prefix := "SELECT "
 	if one {
@@ -192,6 +201,16 @@ func (repo *Repository[T]) selectSQL(one bool, params []any) (string, []any, err
 		query += " DESC"
 	}
 	if !one && options.pageSize > 0 {
+		// Eşit değerli satırların sayfalar arasında tekrar etmemesi veya
+		// atlanmaması için sıralamaya benzersiz varsayılan kolon eklenir.
+		if !strings.EqualFold(options.orderBy, repo.defaultOrder) {
+			query += ", " + quoteIdentifier(repo.defaultOrder)
+			if options.ascending {
+				query += " ASC"
+			} else {
+				query += " DESC"
+			}
+		}
 		query += " OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY"
 		args = append(args, sql.Named("offset", (options.page-1)*options.pageSize), sql.Named("pageSize", options.pageSize))
 	}
@@ -253,7 +272,7 @@ func (repo *Repository[T]) selectRows(
 			// Diğer parametreler aynen korunur.
 			fallbackParams := make([]any, 0, len(params)+1)
 			fallbackParams = append(fallbackParams, params...)
-			fallbackParams = append(fallbackParams, "Id")
+			fallbackParams = append(fallbackParams, repo.defaultOrder)
 
 			query, args, err = fallbackRepo.selectSQL(
 				false,
@@ -292,7 +311,9 @@ func (repo *Repository[T]) selectRows(
 }
 
 // Get/FindMany return [] for an empty result. All mapped fields are selected.
-// No soft-delete predicate is injected: pass IsDeleted=false explicitly when needed.
+// The active-row predicate ISNULL([IsDeleted], 0) = 0 is added automatically,
+// so the target table needs an IsDeleted column. An extra IsDeleted=false
+// filter is unnecessary (and would exclude NULL rows).
 func (repo *Repository[T]) Get(ctx context.Context, params ...any) ([]T, error) {
 	return repo.selectRows(ctx, false, params)
 }
@@ -318,12 +339,6 @@ func (repo *Repository[T]) FindOne(ctx context.Context, params ...any) (*T, erro
 func (repo *Repository[T]) GetByID(ctx context.Context, id any) (*T, error) {
 	return repo.FindOne(ctx, Filter{Field: "Id", Op: OpEq, Value: id})
 }
-
-/*func (repo *Repository[T]) GetAllWithPaging(ctx context.Context, page, pageSize int, params ...any) ([]T, error) {
-	args := []any{page, pageSize}
-	args = append(args, params...)
-	return repo.Get(ctx, args...)
-}*/
 
 func (repo *Repository[T]) GetAllWithPaging(
 	ctx context.Context,
@@ -554,7 +569,7 @@ func (repo *Repository[T]) updateSQL(updates map[string]any, filters []Expr) (st
 	if where == "" {
 		return "", nil, fmt.Errorf("Update için filtre belirtilmeli")
 	}
-	where += " AND ISNULL(" + quoteIdentifier("IsDeleted") + ", 0) = 0"
+	where += " AND ISNULL(" + repo.softDeleteColumn() + ", 0) = 0"
 	args = append(args, filterArgs...)
 	if len(args) > sqlServerParameterLimit {
 		return "", nil, fmt.Errorf("SQL Server parametre sınırı aşıldı")
@@ -718,7 +733,8 @@ type UpdatePair[T any] struct {
 
 // BatchUpdateChanged preserves the old entity-pair batch update use case.
 // identifierField is generic (Id, SKU, UserName, ...), not hardcoded to UserName.
-// The OLD identifier is used and changing the identifier is rejected.
+// The OLD identifier locates the row. A changed identifier value is not an
+// error: it is excluded from SET, so the key itself is never updated.
 // batchSize, UPDATE işlemlerinin gruplama boyutudur.
 // Her kayıt ayrı UPDATE olarak çalışır.
 // Bütün gruplar aynı transaction içinde, tek commit ile tamamlanır.
