@@ -90,6 +90,19 @@ func NewRepository[T any](db *sql.DB, tableName ...string) (*Repository[T], erro
 	return &Repository[T]{db: db, table: table, fields: fields, columns: strings.Join(columns, ", "), defaultOrder: order}, nil
 }
 
+// softDeleteColumn, otomatik aktif-satır koşulunda kullanılacak kolonu döndürür.
+// Modelde IsDeleted alanı db etiketiyle eşlenmişse eşlenen kolon, aksi halde
+// "IsDeleted" kullanılır (JOIN yolu da eşlenen kolonu kullanır).
+func (repo *Repository[T]) softDeleteColumn() string {
+	for _, field := range repo.fields {
+		if strings.EqualFold(field.Name, "IsDeleted") {
+			return quoteIdentifier(field.Column)
+		}
+	}
+
+	return quoteIdentifier("IsDeleted")
+}
+
 // quoteSQLName supports Table or Schema.Table. These names are developer-supplied.
 func quoteSQLName(name string) (string, error) {
 	parts := strings.Split(name, ".")
@@ -177,9 +190,9 @@ func (repo *Repository[T]) selectSQL(one bool, params []any) (string, []any, err
 		return "", nil, err
 	}
 	if where == "" {
-		where = " WHERE ISNULL(" + quoteIdentifier("IsDeleted") + ", 0) = 0"
+		where = " WHERE ISNULL(" + repo.softDeleteColumn() + ", 0) = 0"
 	} else {
-		where += " AND ISNULL(" + quoteIdentifier("IsDeleted") + ", 0) = 0"
+		where += " AND ISNULL(" + repo.softDeleteColumn() + ", 0) = 0"
 	}
 	prefix := "SELECT "
 	if one {
@@ -554,7 +567,7 @@ func (repo *Repository[T]) updateSQL(updates map[string]any, filters []Expr) (st
 	if where == "" {
 		return "", nil, fmt.Errorf("Update için filtre belirtilmeli")
 	}
-	where += " AND ISNULL(" + quoteIdentifier("IsDeleted") + ", 0) = 0"
+	where += " AND ISNULL(" + repo.softDeleteColumn() + ", 0) = 0"
 	args = append(args, filterArgs...)
 	if len(args) > sqlServerParameterLimit {
 		return "", nil, fmt.Errorf("SQL Server parametre sınırı aşıldı")
