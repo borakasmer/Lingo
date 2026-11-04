@@ -22,7 +22,11 @@ Generic repositories, composable filters, changed-field updates, and explicit tr
 
 ---
 
-## Small surface. Useful building blocks.
+<a id="overview"></a>
+
+## Overview — What Lingo Offers
+
+![Overview — What Lingo Offers](assets/readme/section-overview.png)
 
 | 🧩 Compose | 🛠️ Update | ⚙️ Control |
 |---|---|---|
@@ -32,13 +36,19 @@ Generic repositories, composable filters, changed-field updates, and explicit tr
 | Typed result models | Multi-row INSERT and optional TVP | A runnable `net/http` + Swagger demo |
 | INNER / LEFT / RIGHT JOINs | Flat result projections | Public API with private JOIN helpers |
 
+**Read the examples in order:** paged SELECT → multi-table JOINs → setup → filters → writes. Each example keeps the Go call, SQL counterpart, and result together.
+
 The idea is simple: express the query intent in Go, keep the generated SQL understandable, and make transaction boundaries visible. Result models are generic; field names and operators are checked at runtime.
 
 <p align="center">
   <img src="assets/readme/query-flow.gif" alt="Illustrated query flow: UserRepository defines the intent, Repository builds SQL and parameters, SQL Server executes it, and typed model values are returned." width="100%">
 </p>
 
-## Start with a paged SELECT
+<a id="start-with-a-paged-select"></a>
+
+## Paged SELECT — Pagination & Sorting
+
+![Paged SELECT — Pagination & Sorting](assets/readme/section-start-with-a-paged-select.png)
 
 **Read four users at a time. Let SQL Server do the paging.** Start with a familiar SELECT before composing multi-table JOINs.
 
@@ -48,7 +58,7 @@ The idea is simple: express the query intent in Go, keep the generated SQL under
 
 The animation uses illustrative records, not a live database capture. [View the static diagram](assets/readme/paging.png).
 
-### Try it in Swagger
+#### 1. Swagger request
 
 The runnable demo already exposes this route:
 
@@ -69,7 +79,7 @@ Open `/swagger/index.html`, expand **GET /api/users/paging**, and enter:
 GET /api/users/paging?page=2&pageSize=4&sortBy=Id&ascending=true
 ```
 
-### The repository call
+#### 2. Go repository call
 
 Inside `UserRepository`, the generic repository reads the page:
 
@@ -87,7 +97,7 @@ if err != nil {
 return users, nil
 ```
 
-### The SQL equivalent
+#### 3. Generated SQL
 
 For the `Person` model with `Id`, `Name`, `Age`, `Gender`, and `IsDeleted`, the query has this form:
 
@@ -107,6 +117,8 @@ The SELECT column order follows the mapped model fields; the example above follo
 
 **SQL Server skips the first four matching rows and returns the next four.** The application does not fetch the entire table and slice it in memory. This is one SELECT per request; total-count metadata is not included in this list response.
 
+#### 4. JSON response
+
 ```json
 [
   {"id": 5, "name": "X",     "age": 25, "gender": "Male",   "isDeleted": false},
@@ -118,9 +130,15 @@ The SELECT column order follows the mapped model fields; the example above follo
 
 IDs and values above are illustrative: page 2 means the next four rows in the sorted result, not necessarily IDs 5–8. Prefer a unique sort key such as `Id` for stable ordering. Separate requests can still see changes if rows are inserted or deleted between them. If `sortBy` is blank, the demo uses `Id`; `ascending` controls the direction.
 
+#### 5. Paging rules
+
 See [paging defaults and filtering](#paging--sorting--filters) for normalization, limits, and additional predicates.
 
-## Join tables. Keep the SQL explicit.
+<a id="join-tables-keep-the-sql-explicit"></a>
+
+## JOIN Queries — Three Tables, One SELECT
+
+![JOIN Queries — Three Tables, One SELECT](assets/readme/section-join-tables-keep-the-sql-explicit.png)
 
 **Which customer ordered which product? Three tables. Two INNER JOINs. One SQL query.**
 
@@ -132,7 +150,7 @@ This small teaching schema connects **Customers → Orders → Products**. Each 
 
 The animation explains the table matches and SQL; it is not a live recording or performance measurement. [View the static diagram](assets/readme/joins.png).
 
-### 1. The data
+#### 1. The data
 
 **Customers**
 
@@ -157,7 +175,7 @@ The animation explains the table matches and SQL; it is not a live recording or 
 
 The foreign keys determine the matches. All three sample tables also contain `IsDeleted`; the rows shown are active.
 
-### 2. Express it in Go
+#### 2. Express it in Go
 
 `customers`, `orders`, and `products` are generic repositories using the same open pool. Select a flat result model:
 
@@ -198,7 +216,7 @@ rows, err := Repository.JoinFindMany[CustomerOrder](ctx, query)
 
 `EqColumn` compares two validated columns. `Eq` compares a validated column with a parameter value. Both create ordinary `Filter` expressions; full `Filter{...}`, `And(...)`, and `Or(...)` remain supported.
 
-### 3. See the SQL counterpart
+#### 3. See the SQL counterpart
 
 The relationship is easy to recognize in SQL:
 
@@ -243,7 +261,7 @@ WHERE ([c].[Id] = @p1);
 
 **Parameter:** `@p1 = 1`. The parentheses and quoted identifiers come from the builder; values remain separate from SQL text.
 
-### 4. Read the result
+#### 4. Read the result
 
 For customer `1` (Bora), the sample data produces these two rows:
 
@@ -321,7 +339,7 @@ Use the `CustomerOrder` result type above. The local source models reuse the met
 
 </details>
 
-### INNER, LEFT, and RIGHT
+#### INNER, LEFT, and RIGHT
 
 | Method | What it preserves | Customer/order example |
 |---|---|---|
@@ -381,9 +399,13 @@ Use pointers or compatible `sql.Null*` fields for nullable columns. Explicit WHE
 Every JOIN field uses `alias.Field` and is checked against participating model metadata. Multiple ON expressions combine with AND. Each SELECT `As` must map to a result field or its `db` name. `JoinFindMany[R]` returns `[]R` (empty `[]` on no match); `JoinFindOne[R]` returns `R` or `sql.ErrNoRows`, uses `TOP (1)`, and has no deterministic first-row guarantee without a unique match.
 
 
-## Quick start
+<a id="quick-start"></a>
 
-### 1. Prepare the project
+## Quick Start — Run the Demo
+
+![Quick Start — Run the Demo](assets/readme/section-quick-start.png)
+
+#### 1. Prepare the project
 
 Clone this repository and open a terminal in its root directory. Use the Go version declared in `go.mod` and a reachable SQL Server instance.
 
@@ -423,7 +445,7 @@ For a local server with a self-signed certificate, its connection settings may n
 
 </details>
 
-### 2. Describe a model
+#### 2. Describe a model
 
 ```go
 package Models
@@ -443,7 +465,7 @@ func (Person) TableName() string {
 
 `T` is a flat, non-pointer struct. The same repository works with another model and table, such as `Product` and `dbo.Products`.
 
-### 3. Open once. Reuse the pool.
+#### 3. Open once. Reuse the pool.
 
 The following setup belongs at application startup. Imports use the project's local module name, `sqlOrm`.
 
@@ -501,9 +523,13 @@ users, err := repo.FindMany(ctx,
 
 In an HTTP handler, pass `r.Context()` to propagate request cancellation.
 
-## Compose your query
+<a id="compose-your-query"></a>
 
-### Gender matches **AND** (older than the limit **OR** name contains text)
+## Query Filters — Combine AND / OR
+
+![Query Filters — Combine AND / OR](assets/readme/section-compose-your-query.png)
+
+#### Gender matches **AND** (older than the limit **OR** name contains text)
 
 <p align="center">
   <img src="assets/readme/query-composition.png" alt="Query composition: Gender matches AND a grouped expression where Age exceeds the threshold OR Name contains the search text. Active-row filtering is added automatically." width="100%">
@@ -547,7 +573,7 @@ The Go version expresses the same predicate through `Filter`, `And`, and `Or`. F
 
 </details>
 
-### Available operators
+#### Available operators
 
 | Operator | SQL | Meaning |
 |---|---|---|
@@ -559,7 +585,11 @@ The Go version expresses the same predicate through `Filter`, `And`, and `Or`. F
 
 For an untyped `nil` value, `OpEq` produces `IS NULL` and `OpNe` produces `IS NOT NULL`.
 
-## Paging + sorting + filters
+<a id="paging--sorting--filters"></a>
+
+## Paging Reference — Defaults & Filters
+
+![Paging Reference — Defaults & Filters](assets/readme/section-paging--sorting--filters.png)
 
 ```go
 users, err := repo.GetAllWithPaging(
@@ -591,9 +621,13 @@ users, err := repo.FindMany(ctx, 2, 10, "Age", false)
 
 The default/cap normalization above belongs to `GetAllWithPaging`; direct `FindMany` paging arguments must be positive. One integer passed to `FindMany` means page size, with page `1`.
 
-## Update only what changed
+<a id="update-only-what-changed"></a>
 
-### Full models in. Only changed columns in SQL.
+## Changed-field Updates — Write Only the Differences
+
+![Changed-field Updates — Write Only the Differences](assets/readme/section-update-only-what-changed.png)
+
+#### Full models in. Only changed columns in SQL.
 
 **Pass the complete Old and New models. `UpdateChanged` and `BatchUpdateChanged` compare their mapped fields and put only writable differences into `SET`.** Unchanged fields are left out of the generated UPDATE; a pair with no writable changes issues no UPDATE at all.
 
@@ -613,7 +647,7 @@ The animation illustrates comparison and SQL generation, not a live database cap
 
 This changed-field behavior belongs to `UpdateChanged` and `BatchUpdateChanged`. `Update` and `BatchUpdate` write the explicit fields supplied by the caller; they do not perform an Old/New comparison themselves.
 
-### Different values per user: `BatchUpdateChanged`
+#### Different values per user: `BatchUpdateChanged`
 
 ```go
 func appendXToNamesOver40(
@@ -665,7 +699,7 @@ WHERE ([Id] = @p2)
 
 For **250 changed records**, both sizes still mean **250 UPDATE executions, one transaction, one commit**. Grouping alone is not a network-performance optimization.
 
-### Same operation for all matches: `BulkUpdateWithFilter`
+#### Same operation for all matches: `BulkUpdateWithFilter`
 
 Append `X` to all active users older than 40 with **one SQL UPDATE**, without reading them first:
 
@@ -746,7 +780,11 @@ affected, err := repo.BatchUpdate(ctx, []Repository.UpdateItem{
 
 </details>
 
-## Insert multiple rows
+<a id="insert-multiple-rows"></a>
+
+## Bulk INSERT — Multiple Rows per Statement
+
+![Bulk INSERT — Multiple Rows per Statement](assets/readme/section-insert-multiple-rows.png)
 
 ```go
 affected, err := repo.BulkInsertBatched(ctx, []Models.Person{
@@ -770,7 +808,11 @@ Create the SQL table type and stored procedure first. Use a dedicated row model 
 
 </details>
 
-## Explore with Swagger
+<a id="explore-with-swagger"></a>
+
+## Swagger — Explore the Endpoints
+
+![Swagger — Explore the Endpoints](assets/readme/section-explore-with-swagger.png)
 
 The included demo uses `net/http` and your generic repository through a thin `UserRepository` / `UserHandler` layer.
 
@@ -799,7 +841,11 @@ Example write response:
 
 The POST endpoint modifies the demo data. A zero affected-row count is valid and does not itself mean an error.
 
-## API at a glance
+<a id="api-at-a-glance"></a>
+
+## API Reference — Methods & Return Types
+
+![API Reference — Methods & Return Types](assets/readme/section-api-at-a-glance.png)
 
 | Method | Purpose | Result |
 |---|---|---|
@@ -822,7 +868,11 @@ The POST endpoint modifies the demo data. A zero affected-row count is valid and
 | `BatchUpdate` | Transactional explicit update items | `int64, error` |
 | `BatchUpdateChanged` | Transactional Old/New pairs | `int64, error` |
 
-## Behavior you can rely on
+<a id="behavior-you-can-rely-on"></a>
+
+## Behavior & Constraints
+
+![Behavior & Constraints](assets/readme/section-behavior-you-can-rely-on.png)
 
 - **Active rows:** SELECT and UPDATE add `ISNULL([IsDeleted], 0) = 0`. Target tables need that column. An extra `IsDeleted = false` filter would exclude NULL rows, so it is unnecessary for normal active-row queries.
 - **Models and tags:** Go field names are the default SQL names. `db:"ColumnName"` overrides them; `db:"-"` skips mapping. `json` controls JSON serialization only. Nullable SQL values need compatible pointer or `sql.Null*` model fields.
@@ -851,7 +901,11 @@ This fragment assumes an error-returning function and imports `errors` and `data
 
 </details>
 
-## Project map
+<a id="project-map"></a>
+
+## Project Structure & Publishing
+
+![Project Structure & Publishing](assets/readme/section-project-map.png)
 
 | Location | Responsibility |
 |---|---|
@@ -871,7 +925,7 @@ This fragment assumes an error-returning function and imports `errors` and `data
 | `docs/` | Generated Swagger specification |
 | `main.go` | Application startup, pool lifecycle, HTTP routes |
 
-### Publishing and local development
+#### Publishing and local development
 
 Lingo is the project name. Examples retain the current local module name `sqlOrm`. When publishing under a GitHub module path, update `go.mod` and internal imports together. The demo API lives in the same module; import its `Repository` subpackage from other applications after publishing.
 
