@@ -718,7 +718,8 @@ type UpdatePair[T any] struct {
 
 // BatchUpdateChanged preserves the old entity-pair batch update use case.
 // identifierField is generic (Id, SKU, UserName, ...), not hardcoded to UserName.
-// The OLD identifier is used and changing the identifier is rejected.
+// The OLD identifier locates the row. A changed identifier value is not an
+// error: it is excluded from SET, so the key itself is never updated.
 // batchSize, UPDATE işlemlerinin gruplama boyutudur.
 // Her kayıt ayrı UPDATE olarak çalışır.
 // Bütün gruplar aynı transaction içinde, tek commit ile tamamlanır.
