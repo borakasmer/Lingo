@@ -1,4 +1,3 @@
-#!/bin/zsh
+#!/usr/bin/env sh
 
-source "$HOME/.zshrc" || exit 1
 exec go run .
