@@ -16,8 +16,6 @@ import (
 	"sqlOrm/Models"
 	"strings"
 
-	_ "sqlOrm/Models"
-
 	mssql "github.com/microsoft/go-mssqldb"
 )
 
@@ -318,12 +316,6 @@ func (repo *Repository[T]) FindOne(ctx context.Context, params ...any) (*T, erro
 func (repo *Repository[T]) GetByID(ctx context.Context, id any) (*T, error) {
 	return repo.FindOne(ctx, Filter{Field: "Id", Op: OpEq, Value: id})
 }
-
-/*func (repo *Repository[T]) GetAllWithPaging(ctx context.Context, page, pageSize int, params ...any) ([]T, error) {
-	args := []any{page, pageSize}
-	args = append(args, params...)
-	return repo.Get(ctx, args...)
-}*/
 
 func (repo *Repository[T]) GetAllWithPaging(
 	ctx context.Context,
