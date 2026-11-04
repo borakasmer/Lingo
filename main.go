@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"sqlOrm/DB"
@@ -78,6 +80,46 @@ func main() {
 		httpSwagger.URL("/swagger/doc.json"),
 	))
 
+	// http.ListenAndServe zaman aşımı olmadan çalışır; yavaş istemciler
+	// bağlantıları süresiz tutabilir.
+	server := &http.Server{
+		Addr:              ":8080",
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      120 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	signalCtx, stopSignals := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stopSignals()
+
+	serverErrors := make(chan error, 1)
+
 	log.Println("Swagger: http://localhost:8080/swagger/index.html")
-	log.Fatal(http.ListenAndServe(":8080", mux))
+
+	go func() {
+		serverErrors <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErrors:
+		// log.Fatal defer'ları çalıştırmaz; havuzu önce kapatıyoruz.
+		db.Close()
+		log.Fatal(err)
+	case <-signalCtx.Done():
+		shutdownCtx, cancel := context.WithTimeout(
+			context.Background(),
+			10*time.Second,
+		)
+		defer cancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Sunucu düzgün kapatılamadı: %v", err)
+		}
+	}
 }
