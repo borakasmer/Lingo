@@ -29,7 +29,7 @@ Generic repositories, composable filters, changed-field updates, and explicit tr
 | Parameterized filter values | Skip identity updates | Standard `context.Context` |
 | Paging and model-based sorting | Transactional batch updates | Cached model metadata |
 | Typed result models | Multi-row INSERT and optional TVP | A runnable `net/http` + Swagger demo |
-| INNER / LEFT / RIGHT JOINs | Real permission-name projection | Public API with private JOIN helpers |
+| INNER / LEFT / RIGHT JOINs | Flat result projections | Public API with private JOIN helpers |
 
 The idea is simple: express the query intent in Go, keep the generated SQL understandable, and make transaction boundaries visible. Result models are generic; field names and operators are checked at runtime.
 
@@ -39,41 +39,99 @@ The idea is simple: express the query intent in Go, keep the generated SQL under
 
 ## Join tables. Keep the SQL explicit.
 
-**Three tables. Two INNER JOINs. One SQL query.** Compose joins with the same filters and model validation used throughout Lingo.
+**Which customer ordered which product? Three tables. Two INNER JOINs. One SQL query.**
 
-The animation illustrates the execution flow; it is not a live capture or a timing measurement. [View the static diagram](assets/readme/joins.png).
+This small teaching schema connects **Customers → Orders → Products**. Each order in this example refers to one product; a production schema with multiple products per order would normally add an order-line table.
 
 <p align="center">
-  <img src="assets/readme/joins-flow.gif" alt="Three tables, two INNER JOINs: GoUsers connects to GoUserActions by user ID, then to GoActions by controller ID. SQL returns action definitions; Go checks the permission bit mask and returns actual action names." width="100%">
+  <img src="assets/readme/joins-flow.gif" alt="Animated three-table JOIN example: customer Bora matches orders 1001 and 1002; those orders match Keyboard and Mouse products. The corresponding SQL and two result rows are shown." width="100%">
 </p>
 
-```go
-query := users.Join("u").
-    InnerJoin(
-        userActions.JoinSource("ua"),
-        Repository.EqColumn("ua.IdUser", "u.Id"),
-    ).
-    InnerJoin(
-        actions.JoinSource("a"),
-        Repository.EqColumn("a.IdGoController", "ua.IdGoController"),
-    ).
-    Where(
-        Repository.Eq("u.Id", userID),
-        Repository.Eq("ua.IdGoController", controllerID),
-        Repository.Gt("a.ActionNumber", 0),
-    ).
-    Select(
-        Repository.SelectColumn{Field: "ua.ActionNumberTotal", As: "ActionNumberTotal"},
-        Repository.SelectColumn{Field: "a.ActionNumber", As: "ActionNumber"},
-        Repository.SelectColumn{Field: "a.ActionName", As: "ActionName"},
-    )
+The animation explains the table matches and SQL; it is not a live recording or performance measurement. [View the static diagram](assets/readme/joins.png).
 
-rows, err := Repository.JoinFindMany[permissionResult](ctx, query)
+### 1. The data
+
+**Customers**
+
+| Id | Name |
+|---|---|
+| 1 | Bora |
+| 2 | Secil |
+
+**Orders**
+
+| Id | CustomerID | ProductID | Quantity |
+|---|---|---|---|
+| 1001 | 1 | 10 | 1 |
+| 1002 | 1 | 20 | 2 |
+
+**Products**
+
+| Id | Name |
+|---|---|
+| 10 | Keyboard |
+| 20 | Mouse |
+
+The foreign keys determine the matches. All three sample tables also contain `IsDeleted`; the rows shown are active.
+
+### 2. Express it in Go
+
+`customers`, `orders`, and `products` are generic repositories using the same open pool. Select a flat result model:
+
+```go
+type CustomerOrder struct {
+    OrderID      int    `json:"orderId"`
+    CustomerName string `json:"customerName"`
+    ProductName  string `json:"productName"`
+    Quantity     int    `json:"quantity"`
+}
 ```
 
-Here `users`, `userActions`, and `actions` are repositories bound to `Models.PermissionUser`, `Models.UserAction`, and `Models.ActionDefinition`. `permissionResult` is the projection model shown in the complete example below. All repositories use the same open pool; constructing them does not execute a SELECT.
+```go
+query := customers.Join("c").
+    InnerJoin(
+        orders.JoinSource("o"),
+        Repository.EqColumn("o.CustomerID", "c.Id"),
+    ).
+    InnerJoin(
+        products.JoinSource("p"),
+        Repository.EqColumn("p.Id", "o.ProductID"),
+    ).
+    Where(Repository.Eq("c.Id", customerID)).
+    Select(
+        Repository.SelectColumn{Field: "o.Id", As: "OrderID"},
+        Repository.SelectColumn{Field: "c.Name", As: "CustomerName"},
+        Repository.SelectColumn{Field: "p.Name", As: "ProductName"},
+        Repository.SelectColumn{Field: "o.Quantity", As: "Quantity"},
+    )
 
-### SQL counterpart — inspect before executing
+rows, err := Repository.JoinFindMany[CustomerOrder](ctx, query)
+```
+
+- The first JOIN matches an order's `CustomerID` to the customer's `Id`.
+- The second JOIN matches the order's `ProductID` to the product's `Id`.
+- WHERE selects one customer. `customerID` is sent as a SQL parameter.
+- SELECT maps the four requested columns into `CustomerOrder`.
+
+`EqColumn` compares two validated columns. `Eq` compares a validated column with a parameter value. Both create ordinary `Filter` expressions; full `Filter{...}`, `And(...)`, and `Or(...)` remain supported.
+
+### 3. See the SQL counterpart
+
+The relationship is easy to recognize in SQL:
+
+```sql
+-- Relationship-only view; automatic active-row filters are expanded below.
+SELECT o.Id AS OrderID,
+       c.Name AS CustomerName,
+       p.Name AS ProductName,
+       o.Quantity AS Quantity
+FROM dbo.Customers AS c
+INNER JOIN dbo.Orders AS o ON o.CustomerID = c.Id
+INNER JOIN dbo.Products AS p ON p.Id = o.ProductID
+WHERE c.Id = @p1;
+```
+
+Inspect Lingo's SQL and named parameters before execution:
 
 ```go
 sqlText, args, err := query.SQL()
@@ -82,253 +140,162 @@ if err != nil {
 }
 ```
 
-`sqlText` contains validated identifiers and placeholders; `args` holds the named values separately. The SQL shape is:
+With `IsDeleted` mapped in all three source models, Lingo generates this SQL shape:
 
 ```sql
-SELECT [ua].[ActionNumberTotal] AS [ActionNumberTotal],
-       [a].[ActionNumber] AS [ActionNumber],
-       [a].[ActionName] AS [ActionName]
-FROM (SELECT * FROM [dbo].[GoUsers]
-      WHERE ISNULL([IsDeleted], 0) = 0) AS [u]
-INNER JOIN (SELECT * FROM [dbo].[GoUserActions]
-            WHERE ISNULL([IsDeleted], 0) = 0) AS [ua]
-    ON ([ua].[IdUser] = [u].[Id])
-INNER JOIN (SELECT * FROM [dbo].[GoActions]
-            WHERE ISNULL([IsDeleted], 0) = 0) AS [a]
-    ON ([a].[IdGoController] = [ua].[IdGoController])
-WHERE ([u].[Id] = @p1
-   AND [ua].[IdGoController] = @p2
-   AND [a].[ActionNumber] > @p3);
+SELECT [o].[Id] AS [OrderID],
+       [c].[Name] AS [CustomerName],
+       [p].[Name] AS [ProductName],
+       [o].[Quantity] AS [Quantity]
+FROM (SELECT * FROM [dbo].[Customers]
+      WHERE ISNULL([IsDeleted], 0) = 0) AS [c]
+INNER JOIN (SELECT * FROM [dbo].[Orders]
+            WHERE ISNULL([IsDeleted], 0) = 0) AS [o]
+    ON ([o].[CustomerID] = [c].[Id])
+INNER JOIN (SELECT * FROM [dbo].[Products]
+            WHERE ISNULL([IsDeleted], 0) = 0) AS [p]
+    ON ([p].[Id] = [o].[ProductID])
+WHERE ([c].[Id] = @p1);
 ```
 
-The parameter values for the example are `16`, `1`, and `0`. This is SQL inspection, not a benchmark or a query execution.
+**Parameter:** `@p1 = 1`. The parentheses and quoted identifiers come from the builder; values remain separate from SQL text.
 
+### 4. Read the result
 
+For customer `1` (Bora), the sample data produces these two rows:
 
+```json
+[
+  {"orderId": 1001, "customerName": "Bora", "productName": "Keyboard", "quantity": 1},
+  {"orderId": 1002, "customerName": "Bora", "productName": "Mouse", "quantity": 2}
+]
+```
+
+This is a result illustration, not an added HTTP endpoint. Row order is not guaranteed: the current JOIN builder has no `OrderBy` or paging method. There are **two JOINs and one SELECT execution**; no additional per-row lookups are needed.
+
+<details>
+<summary><strong>Complete standalone Go example: models, repositories, query, result</strong></summary>
+
+This example uses dedicated tables in an existing demo database. It does not create tables or modify the running User API. Imports are `context`, `database/sql`, and `sqlOrm/Repository`.
+
+```go
+func getCustomerOrders(
+    ctx context.Context,
+    db *sql.DB,
+    customerID int,
+) ([]CustomerOrder, error) {
+    type customer struct {
+        Id        int
+        Name      string
+        IsDeleted bool
+    }
+    type order struct {
+        Id         int
+        CustomerID int
+        ProductID  int
+        Quantity   int
+        IsDeleted  bool
+    }
+    type product struct {
+        Id        int
+        Name      string
+        IsDeleted bool
+    }
+
+    customers, err := Repository.NewRepository[customer](db, "dbo.Customers")
+    if err != nil {
+        return nil, err
+    }
+    orders, err := Repository.NewRepository[order](db, "dbo.Orders")
+    if err != nil {
+        return nil, err
+    }
+    products, err := Repository.NewRepository[product](db, "dbo.Products")
+    if err != nil {
+        return nil, err
+    }
+
+    query := customers.Join("c").
+        InnerJoin(orders.JoinSource("o"),
+            Repository.EqColumn("o.CustomerID", "c.Id"),
+        ).
+        InnerJoin(products.JoinSource("p"),
+            Repository.EqColumn("p.Id", "o.ProductID"),
+        ).
+        Where(Repository.Eq("c.Id", customerID)).
+        Select(
+            Repository.SelectColumn{Field: "o.Id", As: "OrderID"},
+            Repository.SelectColumn{Field: "c.Name", As: "CustomerName"},
+            Repository.SelectColumn{Field: "p.Name", As: "ProductName"},
+            Repository.SelectColumn{Field: "o.Quantity", As: "Quantity"},
+        )
+
+    return Repository.JoinFindMany[CustomerOrder](ctx, query)
+}
+```
+
+Use the `CustomerOrder` result type above. The local source models reuse the metadata cache and only include the columns needed by this example. Explicit table names avoid needing `TableName()` methods on these local types. The table names and columns belong to this teaching schema; adapt them to your actual database.
+
+</details>
 
 ### INNER, LEFT, and RIGHT
 
-| Method | Rows preserved |
-|---|---|
-| `InnerJoin(source, on...)` | Matching rows on both sides |
-| `LeftJoin(source, on...)` | All rows from the left side, with NULLs for unmatched right-side columns |
-| `RightJoin(source, on...)` | All rows from the right side, with NULLs for unmatched left-side columns |
+| Method | What it preserves | Customer/order example |
+|---|---|---|
+| `InnerJoin` | Matching rows on both sides | Customers with matching orders |
+| `LeftJoin` | All left-side rows; unmatched right columns become NULL | Keep customers even when they have no orders |
+| `RightJoin` | All right-side rows; unmatched left columns become NULL | Keep orders even when no active customer matches |
 
-“All rows” means the rows remaining after each source's automatic active-row filtering. Multiple ON expressions are combined with **AND**; nested `And(...)` and `Or(...)` groups are supported too.
-
-- **Column vs. value:** `Eq("u.Id", userID)` creates a parameterized comparison.
-- **Column vs. column:** `EqColumn("ua.IdUser", "u.Id")` creates a validated column reference, not a string parameter.
-- **Short helpers:** `Eq`, `Gt`, and `EqColumn` produce the existing `Filter` type. Full `Filter{...}` expressions remain supported.
-- **Aliases:** use `alias.Field` in JOIN filters and SELECT projections. Alias and field names are checked at runtime against the participating model metadata.
-- **Projection:** every `As` must match a mapped field name or `db` column name in the result model. Selected columns are scanned in SELECT order; unselected result fields retain their zero values.
-- **Soft delete:** when a source model maps `IsDeleted`, that source is filtered with `ISNULL(IsDeleted, 0) = 0` before joining. This preserves LEFT/RIGHT JOIN semantics. A source without a mapped `IsDeleted` field gets no automatic soft-delete filter.
-- **Execution:** `JoinFindMany[R]` returns `[]R`; `JoinFindOne[R]` uses `TOP (1)` and returns `R`. No match returns `[]` or `sql.ErrNoRows`, respectively.
-- **Ordering:** this JOIN API currently has no `OrderBy` or paging method. `JoinFindOne` has no deterministic first-row guarantee when several rows match.
+“All rows” means the rows remaining after each source's automatic active-row filtering. When a source model maps `IsDeleted`, Lingo filters that source with `ISNULL(IsDeleted, 0) = 0` before joining. A model without a mapped `IsDeleted` field gets no automatic soft-delete condition.
 
 <details>
-<summary><strong>LEFT / RIGHT examples and nullable result models</strong></summary>
+<summary><strong>LEFT and RIGHT examples with nullable projections</strong></summary>
 
-Keep users even when they have no active action record:
+Using the same `customers` and `orders` repositories, keep customers without matching orders:
 
 ```go
-type UserActionMatch struct {
-    UserID       int
-    ControllerID *int
+type CustomerOrderMatch struct {
+    CustomerName string
+    OrderID      *int
 }
 
-query := users.Join("u").
-    LeftJoin(
-        userActions.JoinSource("ua"),
-        Repository.EqColumn("ua.IdUser", "u.Id"),
-        Repository.Eq("ua.IdGoController", controllerID),
+query := customers.Join("c").
+    LeftJoin(orders.JoinSource("o"),
+        Repository.EqColumn("o.CustomerID", "c.Id"),
     ).
-    Where(Repository.Eq("u.Id", userID)).
     Select(
-        Repository.SelectColumn{Field: "u.Id", As: "UserID"},
-        Repository.SelectColumn{Field: "ua.IdGoController", As: "ControllerID"},
+        Repository.SelectColumn{Field: "c.Name", As: "CustomerName"},
+        Repository.SelectColumn{Field: "o.Id", As: "OrderID"},
     )
 
-matches, err := Repository.JoinFindMany[UserActionMatch](ctx, query)
+rows, err := Repository.JoinFindMany[CustomerOrderMatch](ctx, query)
 ```
 
-The controller filter belongs in **ON** here. Moving it into WHERE would remove users whose right-side match is NULL.
-
-Keep active action records even when they have no active matching user:
+Keep orders without an active matching customer:
 
 ```go
-type ActionUserMatch struct {
-    UserID       *int
-    ControllerID int
+type OrderCustomerMatch struct {
+    OrderID      int
+    CustomerName *string
 }
 
-query := users.Join("u").
-    RightJoin(
-        userActions.JoinSource("ua"),
-        Repository.EqColumn("ua.IdUser", "u.Id"),
+query := customers.Join("c").
+    RightJoin(orders.JoinSource("o"),
+        Repository.EqColumn("o.CustomerID", "c.Id"),
     ).
-    Where(Repository.Eq("ua.IdGoController", controllerID)).
     Select(
-        Repository.SelectColumn{Field: "u.Id", As: "UserID"},
-        Repository.SelectColumn{Field: "ua.IdGoController", As: "ControllerID"},
+        Repository.SelectColumn{Field: "o.Id", As: "OrderID"},
+        Repository.SelectColumn{Field: "c.Name", As: "CustomerName"},
     )
 
-matches, err := Repository.JoinFindMany[ActionUserMatch](ctx, query)
+rows, err := Repository.JoinFindMany[OrderCustomerMatch](ctx, query)
 ```
 
-Use pointers or compatible `sql.Null*` fields for columns that may be NULL. Explicit WHERE filters on the nullable side can intentionally remove unmatched rows.
+Use pointers or compatible `sql.Null*` fields for nullable columns. Explicit WHERE comparisons on the nullable side can remove unmatched rows; put a right-side matching restriction in LEFT JOIN's ON clause when unmatched left rows must remain.
 
 </details>
 
-### Real example: return a user's action names
-
-The demo endpoint accepts a user ID and controller ID:
-
-```http
-GET /api/users/permissions?userID=16&controllerID=1
-```
-
-For this sample data, user `16` has `ActionNumberTotal = 31` for controller `1`:
-
-| Table | Relationship / data |
-|---|---|
-| `GoUsers` | `Id = 16` |
-| `GoUserActions` | `IdUser = 16`, `IdGoController = 1`, mask `31` |
-| `GoActions` | Controller `1`: `1=PostPerson`, `2=GetPerson`, `4=GetPersons`, `8=PostPersons`, `16=UpdatePerson` |
-
-SQL joins the three tables and reads the real action definitions. Go checks **`(mask & actionNumber) == actionNumber`**, sorts by action number/name, and removes duplicate names. The bitwise check is **not** translated into SQL by this example.
-
-```json
-{
-  "actions": [
-    "PostPerson",
-    "GetPerson",
-    "GetPersons",
-    "PostPersons",
-    "UpdatePerson"
-  ]
-}
-```
-
-`31 = 1 + 2 + 4 + 8 + 16`. Names come from `GoActions.ActionName`, not a hardcoded Go map. Definitions from another controller do not join. No matches or no granted actions produce `{"actions":[]}`. These IDs and names are illustrative; use records from your own database.
-
-<details>
-<summary><strong>Source models — Models/user_permission.go</strong></summary>
-
-```go
-package Models
-
-type PermissionUser struct {
-    Id        int
-    IsDeleted bool
-}
-
-func (PermissionUser) TableName() string { return "dbo.GoUsers" }
-
-type UserAction struct {
-    IdUser            int
-    IdGoController    int
-    ActionNumberTotal int
-    IsDeleted         bool
-}
-
-func (UserAction) TableName() string { return "dbo.GoUserActions" }
-
-type ActionDefinition struct {
-    ActionNumber   int
-    ActionName     string
-    IdGoController int
-    IsDeleted      bool
-}
-
-func (ActionDefinition) TableName() string { return "dbo.GoActions" }
-
-type UserPermissionResponse struct {
-    Actions []string `json:"actions"`
-}
-```
-
-This example needs the two permission tables in addition to the minimal `GoUsers` quick-start table. It reads permissions only; it does not create or seed those tables. The mapped fields above are the columns required by this query; other database columns do not have to appear in these source models.
-
-</details>
-
-<details>
-<summary><strong>Complete UserRepository.GetUserPermissions implementation</strong></summary>
-
-`UserRepository` keeps the application-owned pool as `db *sql.DB`. This method uses `context`, `sort`, `sqlOrm/Models`, and `sqlOrm/Repository` imports.
-
-```go
-func (repo *UserRepository) GetUserPermissions(
-    ctx context.Context,
-    userID int,
-    controllerID int,
-) ([]string, error) {
-    type permissionResult struct {
-        ActionNumberTotal int
-        ActionNumber      int
-        ActionName        string
-    }
-
-    users, err := Repository.NewRepository[Models.PermissionUser](repo.db)
-    if err != nil {
-        return nil, err
-    }
-    userActions, err := Repository.NewRepository[Models.UserAction](repo.db)
-    if err != nil {
-        return nil, err
-    }
-    actions, err := Repository.NewRepository[Models.ActionDefinition](repo.db)
-    if err != nil {
-        return nil, err
-    }
-
-    query := users.Join("u").
-        InnerJoin(userActions.JoinSource("ua"),
-            Repository.EqColumn("ua.IdUser", "u.Id"),
-        ).
-        InnerJoin(actions.JoinSource("a"),
-            Repository.EqColumn("a.IdGoController", "ua.IdGoController"),
-        ).
-        Where(
-            Repository.Eq("u.Id", userID),
-            Repository.Eq("ua.IdGoController", controllerID),
-            Repository.Gt("a.ActionNumber", 0),
-        ).
-        Select(
-            Repository.SelectColumn{Field: "ua.ActionNumberTotal", As: "ActionNumberTotal"},
-            Repository.SelectColumn{Field: "a.ActionNumber", As: "ActionNumber"},
-            Repository.SelectColumn{Field: "a.ActionName", As: "ActionName"},
-        )
-
-    rows, err := Repository.JoinFindMany[permissionResult](ctx, query)
-    if err != nil {
-        return nil, err
-    }
-
-    sort.Slice(rows, func(i, j int) bool {
-        if rows[i].ActionNumber == rows[j].ActionNumber {
-            return rows[i].ActionName < rows[j].ActionName
-        }
-        return rows[i].ActionNumber < rows[j].ActionNumber
-    })
-
-    names := make([]string, 0)
-    seen := make(map[string]bool)
-    for _, row := range rows {
-        if row.ActionNumberTotal&row.ActionNumber != row.ActionNumber {
-            continue
-        }
-        if !seen[row.ActionName] {
-            names = append(names, row.ActionName)
-            seen[row.ActionName] = true
-        }
-    }
-    return names, nil
-}
-```
-
-There are **two INNER JOINs**, not three, and only **one SELECT execution**. Repository construction reuses cached model metadata and the existing pool. The result is a list of names; this demonstration endpoint does not authenticate its caller or enforce access to other routes.
-
-</details>
+Every JOIN field uses `alias.Field` and is checked against participating model metadata. Multiple ON expressions combine with AND. Each SELECT `As` must map to a result field or its `db` name. `JoinFindMany[R]` returns `[]R` (empty `[]` on no match); `JoinFindOne[R]` returns `R` or `sql.ErrNoRows`, uses `TOP (1)`, and has no deterministic first-row guarantee without a unique match.
 
 
 ## Quick start
@@ -721,7 +688,7 @@ Open **[Swagger UI](http://localhost:8080/swagger/index.html)**, select **Try it
 | `GET` | `/api/users/paging?page=1&pageSize=4&sortBy=Age&ascending=false` | Paging and sorting |
 | `GET` | `/api/users/search?gender=Male&age=40&name=Bor` | **Gender AND (Age OR Name)** |
 | `POST` | `/api/users/append-x-over-40?batchSize=100` | Changed-field batch update |
-| `GET` | `/api/users/permissions?userID=16&controllerID=1` | Three-table JOIN + real action names |
+| `GET` | `/api/users/permissions?userID=16&controllerID=1` | Existing user-permissions demo |
 
 Example write response:
 
