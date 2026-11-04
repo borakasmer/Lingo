@@ -6,7 +6,6 @@
   <img src="assets/readme/hero.png" alt="Lingo — LINQ-inspired intent. Explicit SQL behavior. A lightweight SQL helper for Go." width="100%">
 </p>
 
-<h1 align="center">Lingo</h1>
 <p align="center"><strong>A LINQ-inspired SQL helper for Go and SQL Server.</strong><br>
 Generic repositories, composable filters, changed-field updates, and explicit transaction control — built on <code>database/sql</code>.</p>
 
@@ -42,7 +41,11 @@ Generic repositories, composable filters, changed-field updates, and explicit tr
 The idea is simple: express the query intent in Go, keep the generated SQL understandable, and make transaction boundaries visible. Result models are generic; field names and operators are checked at runtime.
 
 <p align="center">
-  <img src="assets/readme/query-flow.gif" alt="One generic Repository[T] implementation is configured for Person and dbo.GoUsers, Product and dbo.Products, or Order and dbo.Orders. Each repository returns its own model type. UserRepository is an optional application adapter." width="100%">
+  <img src="assets/readme/query-flow.gif" alt="Query flow: UserRepository defines the intent, Repository[T] builds SQL and parameters, SQL Server executes the command, and typed model values are returned." width="100%">
+</p>
+
+<p align="center">
+  <img src="assets/readme/generic-repositories.gif" alt="One generic Repository[T] implementation is configured for Person and dbo.GoUsers, Product and dbo.Products, or Order and dbo.Orders. Each repository returns its own model type. UserRepository is an optional application adapter." width="100%">
 </p>
 
 **Choose the entity. Supply its table mapping. Reuse the same repository operations.** `Repository[Person]` works with user records, while `Repository[Product]` works with product records. No duplicated SQL implementation is needed. The animation illustrates configurations; it does not create tables or execute live queries.
