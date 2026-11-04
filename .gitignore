@@ -1,0 +1,12 @@
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+
+# Local tooling and audit scratch
+.claude/
+.dfmt/
+.temp_files/
+
+# Build output
+/sqlOrm
