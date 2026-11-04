@@ -189,6 +189,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/users/permissions": {
+            "get": {
+                "description": "INNER JOIN ile yetki bit maskesini okur ve örnek action tanımlarına göre isimlere çevirir.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Kullanıcının controller yetkilerini listele",
+                "parameters": [
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "example": 16,
+                        "description": "Kullanıcı ID",
+                        "name": "userID",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "minimum": 1,
+                        "type": "integer",
+                        "example": 1,
+                        "description": "Controller ID",
+                        "name": "controllerID",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/Models.UserPermissionResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Parametreler pozitif tam sayı olmalı",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "405": {
+                        "description": "Method not allowed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Yetkiler sorgulanamadı",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/users/search": {
             "get": {
                 "description": "Cinsiyet eşleşmeli **VE** (yaş belirtilen sınırdan büyük olmalı **VEYA** isim aranan ifadeyi içermeli).",
@@ -279,6 +337,17 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                }
+            }
+        },
+        "Models.UserPermissionResponse": {
+            "type": "object",
+            "properties": {
+                "actions": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 }
             }
         },

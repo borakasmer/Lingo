@@ -3,13 +3,14 @@ package User
 import (
 	"context"
 	"database/sql"
-	"strings"
-
+	"sort"
 	"sqlOrm/Models"
 	"sqlOrm/Repository"
+	"strings"
 )
 
 type UserRepository struct {
+	db         *sql.DB
 	repository *Repository.Repository[Models.Person]
 }
 
@@ -24,6 +25,7 @@ func NewUserRepository(db *sql.DB) (*UserRepository, error) {
 	}
 
 	return &UserRepository{
+		db:         db,
 		repository: repository,
 	}, nil
 }
@@ -141,4 +143,125 @@ func (repo *UserRepository) AppendXToNamesOver40(
 		"Id",
 		batchSize,
 	)
+}
+
+func (repo *UserRepository) GetUserPermissions(
+	ctx context.Context,
+	userID int,
+	controllerID int,
+) ([]string, error) {
+	// Bu örneğe özel modeller yalnızca bu metotta kullanılır.
+	type actionDefinition struct {
+		ActionNumber   int
+		ActionName     string
+		IdGoController int
+		IsDeleted      bool
+	}
+
+	type permissionResult struct {
+		ActionNumberTotal int
+		ActionNumber      int
+		ActionName        string
+	}
+
+	users, err := Repository.NewRepository[Models.PermissionUser](repo.db)
+	if err != nil {
+		return nil, err
+	}
+
+	userActions, err := Repository.NewRepository[Models.UserAction](repo.db)
+	if err != nil {
+		return nil, err
+	}
+
+	actions, err := Repository.NewRepository[actionDefinition](
+		repo.db,
+		"dbo.GoActions",
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	query := users.Join("u").
+		InnerJoin(
+			userActions.JoinSource("ua"),
+			Repository.Filter{
+				Field: "ua.IdUser",
+				Op:    Repository.OpEq,
+				Value: Repository.ColumnRef{Field: "u.Id"},
+			},
+		).
+		InnerJoin(
+			actions.JoinSource("a"),
+			Repository.Filter{
+				Field: "a.IdGoController",
+				Op:    Repository.OpEq,
+				Value: Repository.ColumnRef{
+					Field: "ua.IdGoController",
+				},
+			},
+		).
+		Where(
+			Repository.Filter{
+				Field: "u.Id",
+				Op:    Repository.OpEq,
+				Value: userID,
+			},
+			Repository.Filter{
+				Field: "ua.IdGoController",
+				Op:    Repository.OpEq,
+				Value: controllerID,
+			},
+			Repository.Filter{
+				Field: "a.ActionNumber",
+				Op:    Repository.OpGt,
+				Value: 0,
+			},
+		).
+		Select(
+			Repository.SelectColumn{
+				Field: "ua.ActionNumberTotal",
+				As:    "ActionNumberTotal",
+			},
+			Repository.SelectColumn{
+				Field: "a.ActionNumber",
+				As:    "ActionNumber",
+			},
+			Repository.SelectColumn{
+				Field: "a.ActionName",
+				As:    "ActionName",
+			},
+		)
+
+	rows, err := Repository.JoinFindMany[permissionResult](ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	// JOIN'de henüz OrderBy olmadığı için sonucu burada sıralıyoruz.
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i].ActionNumber == rows[j].ActionNumber {
+			return rows[i].ActionName < rows[j].ActionName
+		}
+
+		return rows[i].ActionNumber < rows[j].ActionNumber
+	})
+
+	names := make([]string, 0)
+	seen := make(map[string]bool)
+
+	for _, row := range rows {
+		// Kullanıcının maskesi bu action'ın tüm bitlerini içeriyor mu?
+		// BITWISE AND işlemi ile kontrol ediyoruz.
+		if row.ActionNumberTotal&row.ActionNumber != row.ActionNumber {
+			continue
+		}
+
+		if !seen[row.ActionName] {
+			names = append(names, row.ActionName)
+			seen[row.ActionName] = true
+		}
+	}
+
+	return names, nil
 }

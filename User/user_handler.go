@@ -293,3 +293,64 @@ func (h *UserHandler) AppendXToNamesOver40(
 		log.Printf("JSON yanıtı yazılamadı: %v", err)
 	}
 }
+
+// GetUserPermissions godoc
+// @Summary Kullanıcının controller yetkilerini listele
+// @Description INNER JOIN ile yetki bit maskesini okur ve örnek action tanımlarına göre isimlere çevirir.
+// @Tags Users
+// @Produce json
+// @Param userID query int true "Kullanıcı ID" minimum(1) example(16)
+// @Param controllerID query int true "Controller ID" minimum(1) example(1)
+// @Success 200 {object} Models.UserPermissionResponse
+// @Failure 400 {string} string "Parametreler pozitif tam sayı olmalı"
+// @Failure 405 {string} string "Method not allowed"
+// @Failure 500 {string} string "Yetkiler sorgulanamadı"
+// @Router /api/users/permissions [get]
+func (h *UserHandler) GetUserPermissions(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	values := r.URL.Query()
+
+	userID, userErr := strconv.Atoi(values.Get("userID"))
+	controllerID, controllerErr := strconv.Atoi(values.Get("controllerID"))
+
+	if userErr != nil || controllerErr != nil ||
+		userID <= 0 || controllerID <= 0 {
+		http.Error(
+			w,
+			"Parametreler pozitif tam sayı olmalı",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	actions, err := h.repository.GetUserPermissions(
+		r.Context(),
+		userID,
+		controllerID,
+	)
+	if err != nil {
+		log.Printf("Kullanıcı yetkileri sorgulanamadı: %v", err)
+		http.Error(
+			w,
+			"Yetkiler sorgulanamadı",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+	if err := json.NewEncoder(w).Encode(
+		Models.UserPermissionResponse{Actions: actions},
+	); err != nil {
+		log.Printf("JSON yanıtı yazılamadı: %v", err)
+	}
+}

@@ -754,3 +754,123 @@ func isMissingCreatedDate(err error) bool {
 			"createddate",
 		)
 }
+
+// ColumnRef, filtre değerinin başka bir kolon olduğunu belirtir.
+//
+// Örnek:
+//
+//	Filter{
+//	    Field: "ra.IdGoRole",
+//	    Op:    OpEq,
+//	    Value: ColumnRef{Field: "u.IdRole"},
+//	}
+//
+// Üretilmesi amaçlanan SQL:
+// [ra].[IdGoRole] = [u].[IdRole]
+type ColumnRef struct {
+	Field string
+}
+
+// SelectColumn, kaynak kolonu sonuç modelindeki alanla eşleştirir.
+//
+// Örnek:
+//
+//	SelectColumn{
+//	    Field: "ra.ActionNumberTotal",
+//	    As:    "ActionNumberTotal",
+//	}
+type SelectColumn struct {
+	Field string
+	As    string
+}
+
+// JoinQuery, JOIN sorgularının dışarıya açılan adaptörüdür.
+// Asıl uygulama join_*.go dosyalarındadır.
+type JoinQuery struct {
+	inner *joinQuery
+}
+
+// JoinSource, repository'yi JOIN kaynağı olarak sunar.
+func (repo *Repository[T]) JoinSource(alias string) joinSource {
+	return repo.newJoinSource(alias)
+}
+
+// Join, her çağrıda yeni bir sorgu oluşturur.
+func (repo *Repository[T]) Join(alias string) *JoinQuery {
+	return &JoinQuery{
+		inner: repo.newJoinQuery(alias),
+	}
+}
+
+func (query *JoinQuery) InnerJoin(
+	source joinSource,
+	on ...Expr,
+) *JoinQuery {
+	query.inner.innerJoin(source, on...)
+	return query
+}
+
+func (query *JoinQuery) LeftJoin(
+	source joinSource,
+	on ...Expr,
+) *JoinQuery {
+	query.inner.leftJoin(source, on...)
+	return query
+}
+
+func (query *JoinQuery) RightJoin(
+	source joinSource,
+	on ...Expr,
+) *JoinQuery {
+	query.inner.rightJoin(source, on...)
+	return query
+}
+
+func (query *JoinQuery) Where(expressions ...Expr) *JoinQuery {
+	query.inner.where(expressions...)
+	return query
+}
+
+func (query *JoinQuery) Select(columns ...SelectColumn) *JoinQuery {
+	query.inner.selectColumns(columns...)
+	return query
+}
+
+func (query *JoinQuery) Err() error {
+	if query == nil || query.inner == nil {
+		return fmt.Errorf("JOIN sorgusu başlatılmamış")
+	}
+
+	return query.inner.getError()
+}
+
+func (query *JoinQuery) SQL() (string, []any, error) {
+	if err := query.Err(); err != nil {
+		return "", nil, err
+	}
+
+	return query.inner.buildSQL()
+}
+
+func JoinFindMany[R any](
+	ctx context.Context,
+	query *JoinQuery,
+) ([]R, error) {
+	if err := query.Err(); err != nil {
+		return nil, err
+	}
+
+	return joinFindMany[R](ctx, query.inner)
+}
+
+func JoinFindOne[R any](
+	ctx context.Context,
+	query *JoinQuery,
+) (R, error) {
+	if err := query.Err(); err != nil {
+		var zero R
+		return zero, err
+	}
+
+	return joinFindOne[R](ctx, query.inner)
+}

@@ -13,6 +13,13 @@ definitions:
       name:
         type: string
     type: object
+  Models.UserPermissionResponse:
+    properties:
+      actions:
+        items:
+          type: string
+        type: array
+    type: object
   User.BatchUpdateResponse:
     properties:
       updatedCount:
@@ -142,6 +149,47 @@ paths:
           schema:
             type: string
       summary: Kullanıcıları sayfalayarak ve sıralayarak getir
+      tags:
+      - Users
+  /api/users/permissions:
+    get:
+      description: INNER JOIN ile yetki bit maskesini okur ve örnek action tanımlarına
+        göre isimlere çevirir.
+      parameters:
+      - description: Kullanıcı ID
+        example: 16
+        in: query
+        minimum: 1
+        name: userID
+        required: true
+        type: integer
+      - description: Controller ID
+        example: 1
+        in: query
+        minimum: 1
+        name: controllerID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/Models.UserPermissionResponse'
+        "400":
+          description: Parametreler pozitif tam sayı olmalı
+          schema:
+            type: string
+        "405":
+          description: Method not allowed
+          schema:
+            type: string
+        "500":
+          description: Yetkiler sorgulanamadı
+          schema:
+            type: string
+      summary: Kullanıcının controller yetkilerini listele
       tags:
       - Users
   /api/users/search:

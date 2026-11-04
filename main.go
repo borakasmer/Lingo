@@ -67,6 +67,10 @@ func main() {
 		"/api/users/append-x-over-40",
 		userHandler.AppendXToNamesOver40,
 	)
+	mux.HandleFunc(
+		"/api/users/permissions",
+		userHandler.GetUserPermissions,
+	)
 
 	mux.Handle("/swagger/", httpSwagger.Handler(
 		httpSwagger.URL("/swagger/doc.json"),
