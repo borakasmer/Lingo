@@ -442,6 +442,15 @@ func (h *UserHandler) DeleteUsersFromID(
 			Value: minID,
 		},
 	)
+	if err != nil {
+		log.Printf("bulk delete users failed: %v", err)
+		http.Error(
+			w,
+			"Users could not be deleted",
+			http.StatusInternalServerError,
+		)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
