@@ -11,6 +11,7 @@
 Generic repositories, composable filters, changed-field updates, and explicit transaction control — built on <code>database/sql</code>.</p>
 
 <p align="center">
+  <a href="#start-with-a-paged-select">Paged SELECT</a> ·
   <a href="#join-tables-keep-the-sql-explicit">JOINs</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#compose-your-query">Query examples</a> ·
@@ -36,6 +37,88 @@ The idea is simple: express the query intent in Go, keep the generated SQL under
 <p align="center">
   <img src="assets/readme/query-flow.gif" alt="Illustrated query flow: UserRepository defines the intent, Repository builds SQL and parameters, SQL Server executes it, and typed model values are returned." width="100%">
 </p>
+
+## Start with a paged SELECT
+
+**Read four users at a time. Let SQL Server do the paging.** Start with a familiar SELECT before composing multi-table JOINs.
+
+<p align="center">
+  <img src="assets/readme/paging-flow.gif" alt="Animated paged SELECT: page 1 uses OFFSET 0 and returns four users; page 2 uses OFFSET 4 and returns the next four. SQL and named parameters appear beside the selected rows." width="100%">
+</p>
+
+The animation uses illustrative records, not a live database capture. [View the static diagram](assets/readme/paging.png).
+
+### Try it in Swagger
+
+The runnable demo already exposes this route:
+
+```go
+mux.HandleFunc("/api/users/paging", userHandler.GetAllWithPaging)
+```
+
+Open `/swagger/index.html`, expand **GET /api/users/paging**, and enter:
+
+| Parameter | Value | Meaning |
+|---|---|---|
+| `page` | `2` | Read the second page |
+| `pageSize` | `4` | Return at most four users |
+| `sortBy` | `Id` | Sort by the unique ID |
+| `ascending` | `true` | Ascending order |
+
+```http
+GET /api/users/paging?page=2&pageSize=4&sortBy=Id&ascending=true
+```
+
+### The repository call
+
+Inside `UserRepository`, the generic repository reads the page:
+
+```go
+users, err := repo.repository.GetAllWithPaging(
+    ctx,
+    2,     // page
+    4,     // pageSize
+    "Id",  // sortBy
+    true,  // ascending
+)
+if err != nil {
+    return nil, err
+}
+return users, nil
+```
+
+### The SQL equivalent
+
+For the `Person` model with `Id`, `Name`, `Age`, `Gender`, and `IsDeleted`, the query has this form:
+
+```sql
+SELECT [Id], [Name], [Age], [Gender], [IsDeleted]
+FROM [dbo].[GoUsers]
+WHERE ISNULL([IsDeleted], 0) = 0
+ORDER BY [Id] ASC
+OFFSET @p1 ROWS
+FETCH NEXT @p2 ROWS ONLY;
+
+-- @p1 = 4  : (page - 1) * pageSize
+-- @p2 = 4  : pageSize
+```
+
+The SELECT column order follows the mapped model fields; the example above follows the current `Person` definition. Parameter names here illustrate skip/take binding.
+
+**SQL Server skips the first four matching rows and returns the next four.** The application does not fetch the entire table and slice it in memory. This is one SELECT per request; total-count metadata is not included in this list response.
+
+```json
+[
+  {"id": 5, "name": "X",     "age": 25, "gender": "Male",   "isDeleted": false},
+  {"id": 6, "name": "Y",     "age": 30, "gender": "Female", "isDeleted": false},
+  {"id": 7, "name": "Z",     "age": 35, "gender": "Male",   "isDeleted": false},
+  {"id": 8, "name": "Deniz", "age": 28, "gender": "Female", "isDeleted": false}
+]
+```
+
+IDs and values above are illustrative: page 2 means the next four rows in the sorted result, not necessarily IDs 5–8. Prefer a unique sort key such as `Id` for stable ordering. Separate requests can still see changes if rows are inserted or deleted between them. If `sortBy` is blank, the demo uses `Id`; `ascending` controls the direction.
+
+See [paging defaults and filtering](#paging--sorting--filters) for normalization, limits, and additional predicates.
 
 ## Join tables. Keep the SQL explicit.
 
