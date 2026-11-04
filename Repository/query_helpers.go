@@ -2,12 +2,14 @@ package Repository
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"reflect"
 	"strings"
 )
 
-// isNullValue, SQL NULL anlamına gelen değerleri tanır: untyped nil ve nil pointer.
+// isNullValue, SQL NULL anlamına gelen değerleri tanır: untyped nil, nil pointer
+// ve NULL üreten driver.Valuer.
 func isNullValue(value any) bool {
 	if value == nil {
 		return true
@@ -15,7 +17,18 @@ func isNullValue(value any) bool {
 
 	v := reflect.ValueOf(value)
 
-	return v.Kind() == reflect.Pointer && v.IsNil()
+	if v.Kind() == reflect.Pointer && v.IsNil() {
+		return true
+	}
+
+	// sql.NullString{} gibi Valuer'lar da geçersizken NULL üretir.
+	if valuer, ok := value.(driver.Valuer); ok {
+		converted, err := valuer.Value()
+
+		return err == nil && converted == nil
+	}
+
+	return false
 }
 
 // startIndex, parametre numaralandırmasının başlangıcıdır.
