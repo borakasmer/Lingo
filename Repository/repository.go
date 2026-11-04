@@ -253,7 +253,7 @@ func (repo *Repository[T]) selectRows(
 			// Diğer parametreler aynen korunur.
 			fallbackParams := make([]any, 0, len(params)+1)
 			fallbackParams = append(fallbackParams, params...)
-			fallbackParams = append(fallbackParams, "Id")
+			fallbackParams = append(fallbackParams, repo.defaultOrder)
 
 			query, args, err = fallbackRepo.selectSQL(
 				false,
