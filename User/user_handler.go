@@ -3,6 +3,7 @@ package User
 import (
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
 	"sqlOrm/Repository"
 	"strconv"
@@ -167,6 +168,20 @@ func (h *UserHandler) GetAllWithPaging(
 			return
 		}
 		pageSize = parsed
+	}
+
+	// GetAllWithPaging'in uyguladığı pageSize sınırlarıyla aynı hesap:
+	// OFFSET taşacak kadar büyük page istemci hatasıdır.
+	effectivePageSize := pageSize
+	if effectivePageSize < 1 {
+		effectivePageSize = 10
+	} else if effectivePageSize > 100 {
+		effectivePageSize = 100
+	}
+
+	if page > 1 && page-1 > math.MaxInt/effectivePageSize {
+		http.Error(w, "page çok büyük", http.StatusBadRequest)
+		return
 	}
 
 	sortBy := strings.TrimSpace(query.Get("sortBy"))
