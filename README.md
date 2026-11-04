@@ -510,9 +510,25 @@ The default/cap normalization above belongs to `GetAllWithPaging`; direct `FindM
 
 ## Update only what changed
 
+### Full models in. Only changed columns in SQL.
+
+**Pass the complete Old and New models. `UpdateChanged` and `BatchUpdateChanged` compare their mapped fields and put only writable differences into `SET`.** Unchanged fields are left out of the generated UPDATE; a pair with no writable changes issues no UPDATE at all.
+
 <p align="center">
-  <img src="assets/readme/batch-update.png" alt="Changed-field update: read active users older than 40, compare Bora with BoraX, and update only Name. For 250 changed rows and batchSize 100, there are 250 UPDATE executions in one transaction and one commit." width="100%">
+  <img src="assets/readme/changed-columns.gif" alt="Animated Old/New model comparison: only Name changes from Bora to BoraX. The generated UPDATE contains SET Name only; unchanged Age and Gender are omitted, Id is used in WHERE, and unchanged pairs issue no UPDATE." width="100%">
 </p>
+
+The animation illustrates comparison and SQL generation, not a live database capture. [Static comparison](assets/readme/changed-columns.png) · [Batch execution diagram](assets/readme/batch-update.png).
+
+| Supplied Old → New difference | Generated write |
+|---|---|
+| Only `Name` changes | `SET [Name] = @p1` |
+| `Name` and `Age` change | Only `Name` and `Age` enter SET |
+| No writable field changes | No UPDATE command |
+
+**In the example below, the models include `Id`, `Name`, `Age`, and `Gender`, but only `Name` changes. SQL updates that single column.** `Id` identifies the row through WHERE; identity/protected identifier fields do not enter SET. The helper compares supplied models; it does not automatically reload database state or detect concurrent changes.
+
+This changed-field behavior belongs to `UpdateChanged` and `BatchUpdateChanged`. `Update` and `BatchUpdate` write the explicit fields supplied by the caller; they do not perform an Old/New comparison themselves.
 
 ### Different values per user: `BatchUpdateChanged`
 
