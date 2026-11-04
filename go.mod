@@ -2,6 +2,8 @@ module sqlOrm
 
 go 1.27
 
+toolchain go1.27.3
+
 require (
 	github.com/microsoft/go-mssqldb v1.11.2
 	github.com/swaggo/http-swagger/v2 v2.0.2
