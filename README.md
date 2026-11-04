@@ -16,6 +16,7 @@ Generic repositories, composable filters, changed-field updates, and explicit tr
   <a href="#quick-start">Quick start</a> ·
   <a href="#compose-your-query">Query examples</a> ·
   <a href="#update-only-what-changed">Changed-field updates</a> ·
+  <a href="#delete-with-filter">Filtered DELETE</a> ·
   <a href="#explore-with-swagger">Swagger</a> ·
   <a href="#api-at-a-glance">API reference</a>
 </p>
@@ -41,8 +42,10 @@ Generic repositories, composable filters, changed-field updates, and explicit tr
 The idea is simple: express the query intent in Go, keep the generated SQL understandable, and make transaction boundaries visible. Result models are generic; field names and operators are checked at runtime.
 
 <p align="center">
-  <img src="assets/readme/query-flow.gif" alt="Illustrated query flow: UserRepository defines the intent, Repository builds SQL and parameters, SQL Server executes it, and typed model values are returned." width="100%">
+  <img src="assets/readme/query-flow.gif" alt="One generic Repository[T] implementation is configured for Person and dbo.GoUsers, Product and dbo.Products, or Order and dbo.Orders. Each repository returns its own model type. UserRepository is an optional application adapter." width="100%">
 </p>
+
+**Choose the entity. Supply its table mapping. Reuse the same repository operations.** `Repository[Person]` works with user records, while `Repository[Product]` works with product records. No duplicated SQL implementation is needed. The animation illustrates configurations; it does not create tables or execute live queries.
 
 <a id="start-with-a-paged-select"></a>
 
@@ -523,6 +526,134 @@ users, err := repo.FindMany(ctx,
 
 In an HTTP handler, pass `r.Context()` to propagate request cancellation.
 
+#### 4. Understand `T` and your application repository
+
+**Give Lingo a model and its table mapping. It becomes the repository for that entity.**
+
+You do not write the same SELECT, INSERT, UPDATE, and DELETE infrastructure for every table. `Repository[T]` is the reusable implementation; `NewRepository[T]` creates a configured instance for the entity you supply.
+
+| Model supplied as `T` | Table mapping | Repository instance |
+|---|---|---|
+| `Models.Person` | `dbo.GoUsers` | A repository for user records |
+| `Product` | `dbo.Products` | A repository for product records |
+| `Order` | `dbo.Orders` | A repository for order records |
+
+The table mapping comes from the model's `TableName()` method or the explicit `tableName` argument. Lingo does **not** infer or create a database table from the Go type name.
+
+```go
+// Person supplies its mapping through TableName().
+users, err := Repository.NewRepository[Models.Person](db)
+if err != nil {
+    return err
+}
+
+// A different entity and table, using the same implementation.
+// This local type illustrates an existing dbo.Products table.
+type Product struct {
+    Id        int
+    Name      string
+    IsDeleted bool
+}
+
+products, err := Repository.NewRepository[Product](db, "dbo.Products")
+if err != nil {
+    return err
+}
+
+userRows, err := users.FindMany(ctx)
+if err != nil {
+    return err
+}
+productRows, err := products.FindMany(ctx)
+if err != nil {
+    return err
+}
+
+// userRows: []Models.Person
+// productRows: []Product
+// Use both results in your application.
+_ = userRows
+_ = productRows
+```
+
+This fragment assumes `db` and `ctx` in an error-returning function. The example product table must already exist and contain the mapped columns.
+
+**Each instance keeps its own model fields, table, SELECT columns, and default sort.** The SQL implementation is shared, the connection pool can be shared, and field metadata is cached by model type. Two instances can even use the same `T` with different explicit table names when their schemas match.
+
+A separate handwritten `UserRepository`, `ProductRepository`, or `OrderRepository` is **optional**. Add one when you want named application queries; the generic repository already provides the shared data operations.
+
+The core repository is declared once:
+
+```go
+type Repository[T any] struct {
+    db           *sql.DB
+    table        string
+    fields       []modelField
+    columns      string
+    defaultOrder string
+}
+```
+
+`T` is a type parameter: replace it with the model the repository should read or write. `any` is the Go constraint; the constructor additionally checks at runtime that the model is a supported flat, non-pointer struct.
+
+| Constructed repository | What `T` means | List result type |
+|---|---|---|
+| `Repository[Models.Person]` | `Models.Person` | `[]Models.Person` |
+| `Repository[Product]` | Your `Product` struct | `[]Product` |
+
+The constructor binds that model to a SQL connection pool and a table:
+
+```go
+people, err := Repository.NewRepository[Models.Person](db)
+```
+
+`NewRepository` gets cached field metadata, resolves `TableName()` or an explicit table name, and prepares the quoted column names and default sorting field. It does not load table rows. The pool is shared; creating a repository does not create another `sql.DB` pool. An explicitly supplied table name takes precedence over `TableName()`.
+
+Your application repository holds this configured generic repository:
+
+```go
+type UserRepository struct {
+    db         *sql.DB
+    repository *Repository.Repository[Models.Person]
+}
+```
+
+In `Repository.Repository[Models.Person]`, the first `Repository` is the imported package, the second is the generic type, and `Models.Person` is the concrete model used as `T`.
+
+```go
+func NewUserRepository(db *sql.DB) (*UserRepository, error) {
+    repository, err := Repository.NewRepository[Models.Person](db)
+    if err != nil {
+        return nil, err
+    }
+
+    return &UserRepository{
+        db:         db,
+        repository: repository,
+    }, nil
+}
+
+func (repo *UserRepository) GetByName(
+    ctx context.Context,
+    name string,
+) ([]Models.Person, error) {
+    return repo.repository.FindMany(
+        ctx,
+        Repository.Filter{
+            Field: "Name",
+            Op:    Repository.OpLike,
+            Value: "%" + name + "%",
+        },
+    )
+}
+```
+
+These snippets belong to the `User` package and use `context`, `database/sql`, `sqlOrm/Models`, and `sqlOrm/Repository` imports.
+
+**This is composition:** `UserRepository` contains a `Repository[Models.Person]`; it does not inherit from it. The generic repository handles SQL construction, mapping, and execution. `UserRepository` gives application queries names such as `GetByName`, without repeating the generic SQL implementation. Its `db` field also lets JOIN examples construct repositories for other source models using the same pool.
+
+A `ProductRepository` can follow the same pattern with `Repository[Product]`. The generic operations stay the same; the model, table mapping, and application query methods change. Fields and filter values are still checked at runtime where applicable: generics provide concrete model/result types, not compile-time validation of string column names.
+
 <a id="compose-your-query"></a>
 
 ## Query Filters — Combine AND / OR
@@ -808,6 +939,81 @@ Create the SQL table type and stored procedure first. Use a dedicated row model 
 
 </details>
 
+<a id="delete-with-filter"></a>
+
+## Filtered DELETE — Remove Matching Rows
+
+![Filtered DELETE — Remove Matching Rows](assets/readme/section-delete-with-filter.png)
+
+**Delete all users whose `Id >= 40` in one SQL statement.** `DeleteWhere` performs a permanent DELETE, not a soft delete. It does not add an `IsDeleted` predicate: matching active and already soft-deleted rows are both eligible.
+
+![Animated filtered DELETE: keep IDs 38 and 39, remove IDs 40–42, and return deletedCount 3](assets/readme/delete-flow.gif)
+
+The animation uses illustrative rows. [View the static diagram](assets/readme/delete.png).
+
+#### 1. Generic repository call
+
+```go
+count, err := repo.DeleteWhere(
+    ctx,
+    Repository.Filter{
+        Field: "Id",
+        Op:    Repository.OpGte,
+        Value: 40,
+    },
+)
+```
+
+Here, `repo` is a `*Repository.Repository[Models.Person]`. Field names are checked against mapped model fields; the value is passed as a SQL parameter. An empty WHERE expression is rejected. The returned count is the number of affected rows; zero is a valid result.
+
+#### 2. UserRepository adapter
+
+The application adapter accepts the same composable filters:
+
+```go
+func (repo *UserRepository) DeleteUsersWithFilter(
+    ctx context.Context,
+    filters ...Repository.Expr,
+) (int64, error) {
+    return repo.repository.DeleteWhere(ctx, filters...)
+}
+```
+
+The HTTP handler validates `minID > 0`, then calls this adapter with `Id >= minID`. The generic repository is not tied to users or to this particular filter.
+
+#### 3. Generated SQL
+
+```sql
+DELETE FROM [dbo].[GoUsers]
+WHERE [Id] >= @p1;
+
+-- @p1 = 40
+```
+
+There is no SELECT-first loop and no DELETE per record: the predicate is evaluated by SQL Server in one statement. Database constraints still apply; a foreign-key restriction can reject the deletion.
+
+#### 4. Swagger request and response
+
+The demo route is registered in `main.go`:
+
+```go
+mux.HandleFunc("/api/users/bulk-delete", userHandler.DeleteUsersFromID)
+```
+
+In Swagger, choose **DELETE /api/users/bulk-delete**, enter `minID = 40`, and execute:
+
+```http
+DELETE /api/users/bulk-delete?minID=40
+```
+
+```json
+{
+  "deletedCount": 3
+}
+```
+
+The count above is illustrative. This endpoint permanently removes every matching row, rather than setting `IsDeleted = 1`.
+
 <a id="explore-with-swagger"></a>
 
 ## Swagger — Explore the Endpoints
@@ -829,6 +1035,7 @@ Open **[Swagger UI](http://localhost:8080/swagger/index.html)**, select **Try it
 | `GET` | `/api/users/paging?page=1&pageSize=4&sortBy=Age&ascending=false` | Paging and sorting |
 | `GET` | `/api/users/search?gender=Male&age=40&name=Bor` | **Gender AND (Age OR Name)** |
 | `POST` | `/api/users/append-x-over-40?batchSize=100` | Changed-field batch update |
+| `DELETE` | `/api/users/bulk-delete?minID=40` | Permanent filtered DELETE |
 | `GET` | `/api/users/permissions?userID=16&controllerID=1` | Existing user-permissions demo |
 
 Example write response:
@@ -839,7 +1046,7 @@ Example write response:
 }
 ```
 
-The POST endpoint modifies the demo data. A zero affected-row count is valid and does not itself mean an error.
+The POST update and DELETE endpoints modify the demo data. A zero affected-row count is valid and does not itself mean an error.
 
 <a id="api-at-a-glance"></a>
 
@@ -867,6 +1074,7 @@ The POST endpoint modifies the demo data. A zero affected-row count is valid and
 | `UpdateChanged` | Compare one Old/New pair | `int64, error` |
 | `BatchUpdate` | Transactional explicit update items | `int64, error` |
 | `BatchUpdateChanged` | Transactional Old/New pairs | `int64, error` |
+| `DeleteWhere` | Permanently delete all rows matching explicit filters | `int64, error` |
 
 <a id="behavior-you-can-rely-on"></a>
 
@@ -874,6 +1082,7 @@ The POST endpoint modifies the demo data. A zero affected-row count is valid and
 
 ![Behavior & Constraints](assets/readme/section-behavior-you-can-rely-on.png)
 
+- **Permanent DELETE:** `DeleteWhere` requires an explicit WHERE expression and adds no automatic `IsDeleted` condition. It returns the number of deleted rows.
 - **Active rows:** SELECT and UPDATE add `ISNULL([IsDeleted], 0) = 0`. Target tables need that column. An extra `IsDeleted = false` filter would exclude NULL rows, so it is unnecessary for normal active-row queries.
 - **Models and tags:** Go field names are the default SQL names. `db:"ColumnName"` overrides them; `db:"-"` skips mapping. `json` controls JSON serialization only. Nullable SQL values need compatible pointer or `sql.Null*` model fields.
 - **Identity protection:** The Go field named `Id` is skipped during normal INSERT and UPDATE. In changed-pair batches, the matching identifier is excluded from SET and the original key locates the row.
