@@ -21,7 +21,12 @@ import (
 	mssql "github.com/microsoft/go-mssqldb"
 )
 
-const sqlServerParameterLimit = 2100
+const (
+	sqlServerParameterLimit = 2100
+	// sp_executesql uses two of the parameter slots for its own arguments.
+	sqlExecuteSQLReservedParams = 2
+	maxUserParameters           = sqlServerParameterLimit - sqlExecuteSQLReservedParams
+)
 
 type Repository[T any] struct {
 	db           *sql.DB
@@ -195,7 +200,7 @@ func (repo *Repository[T]) selectSQL(one bool, params []any) (string, []any, err
 		query += " OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY"
 		args = append(args, sql.Named("offset", (options.page-1)*options.pageSize), sql.Named("pageSize", options.pageSize))
 	}
-	if len(args) > sqlServerParameterLimit {
+	if len(args) > maxUserParameters {
 		return "", nil, fmt.Errorf("SQL Server parametre sınırı aşıldı")
 	}
 	return query, args, nil
@@ -374,7 +379,7 @@ func (repo *Repository[T]) insertSQL(entities []T) (string, []any, error) {
 		}
 		return "INSERT INTO " + repo.table + " DEFAULT VALUES", nil, nil
 	}
-	if len(entities) > 1000 || len(entities) > sqlServerParameterLimit/len(fields) {
+	if len(entities) > 1000 || len(entities) > maxUserParameters/len(fields) {
 		return "", nil, fmt.Errorf("SQL Server toplu INSERT sınırı aşıldı")
 	}
 	columns := make([]string, len(fields))
@@ -420,8 +425,8 @@ func (repo *Repository[T]) BulkInsertBatched(ctx context.Context, entities []T, 
 	limit := 1000
 	if fieldCount == 0 {
 		limit = 1
-	} else if sqlServerParameterLimit/fieldCount < limit {
-		limit = sqlServerParameterLimit / fieldCount
+	} else if maxUserParameters/fieldCount < limit {
+		limit = maxUserParameters / fieldCount
 	}
 	if limit < 1 {
 		return 0, fmt.Errorf("kolon sayısı parametre sınırını aşıyor")
@@ -556,7 +561,7 @@ func (repo *Repository[T]) updateSQL(updates map[string]any, filters []Expr) (st
 	}
 	where += " AND ISNULL(" + quoteIdentifier("IsDeleted") + ", 0) = 0"
 	args = append(args, filterArgs...)
-	if len(args) > sqlServerParameterLimit {
+	if len(args) > maxUserParameters {
 		return "", nil, fmt.Errorf("SQL Server parametre sınırı aşıldı")
 	}
 	if len(set) == 0 {
