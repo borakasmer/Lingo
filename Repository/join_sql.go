@@ -263,6 +263,12 @@ func buildJoinConditions(
 				)
 			}
 
+			if expr.Logic == LogicOr && len(expr.Items) == 0 {
+				return "1=0", nil
+			}
+
+			argCount, startParam := len(args), paramIndex
+			alwaysTrue := false
 			parts := make([]string, 0, len(expr.Items))
 
 			for _, item := range expr.Items {
@@ -271,9 +277,17 @@ func buildJoinConditions(
 					return "", err
 				}
 
-				if part != "" {
-					parts = append(parts, part)
+				if part == "" {
+					alwaysTrue = true
+					continue
 				}
+
+				parts = append(parts, part)
+			}
+
+			if alwaysTrue && expr.Logic == LogicOr {
+				args, paramIndex = args[:argCount], startParam
+				return "", nil
 			}
 
 			if len(parts) == 0 {

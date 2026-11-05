@@ -71,6 +71,13 @@ func buildWhere(
 				)
 			}
 
+			// An empty OR matches no rows; dropping it would widen the WHERE.
+			if expr.Logic == LogicOr && len(expr.Items) == 0 {
+				return "1=0", nil
+			}
+
+			argCount, startParam := len(args), paramIndex
+			alwaysTrue := false
 			parts := make([]string, 0, len(expr.Items))
 
 			for _, item := range expr.Items {
@@ -79,9 +86,19 @@ func buildWhere(
 					return "", err
 				}
 
-				if part != "" {
-					parts = append(parts, part)
+				// "" means always true; inside an OR it makes the
+				// whole group always true.
+				if part == "" {
+					alwaysTrue = true
+					continue
 				}
+
+				parts = append(parts, part)
+			}
+
+			if alwaysTrue && expr.Logic == LogicOr {
+				args, paramIndex = args[:argCount], startParam
+				return "", nil
 			}
 
 			if len(parts) == 0 {
