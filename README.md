@@ -468,7 +468,7 @@ export SQL_CONNECTION_STRING='server=localhost;port=1433;user id=demo_user;passw
 The demo reads this environment variable. The repository receives an open `*sql.DB`; connection credentials are not part of its query API. Keep real credentials out of source control.
 
 <details>
-<summary><strong>Optional: create a minimal table in a fresh demo database</strong></summary>
+<summary><strong>Optional: create minimal tables in a fresh demo database</strong></summary>
 
 This schema is for a new demo database, not a migration for an existing application table.
 
@@ -478,13 +478,37 @@ CREATE TABLE dbo.GoUsers (
     Name      NVARCHAR(100) NOT NULL,
     Age       INT NOT NULL,
     Gender    NVARCHAR(20) NOT NULL,
+    Username  NVARCHAR(100) NULL,
+    Password  NVARCHAR(200) NULL,
     IsDeleted BIT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE dbo.GoActions (
+    ActionNumber   INT NOT NULL,
+    ActionName     NVARCHAR(100) NOT NULL,
+    IdGoController INT NOT NULL,
+    IsDeleted      BIT NOT NULL DEFAULT 0,
+    PRIMARY KEY (IdGoController, ActionNumber)
+);
+
+CREATE TABLE dbo.GoUserActions (
+    IdUser            INT NOT NULL REFERENCES dbo.GoUsers(Id),
+    IdGoController    INT NOT NULL,
+    ActionNumberTotal INT NOT NULL,
+    IsDeleted         BIT NOT NULL DEFAULT 0,
+    PRIMARY KEY (IdUser, IdGoController)
 );
 
 INSERT INTO dbo.GoUsers (Name, Age, Gender)
 VALUES (N'Bora', 48, N'Male'),
        (N'Secil', 42, N'Female'),
        (N'Duru', 14, N'Female');
+
+INSERT INTO dbo.GoActions (ActionNumber, ActionName, IdGoController)
+VALUES (1, N'Read', 1), (2, N'Create', 1), (4, N'Update', 1);
+
+INSERT INTO dbo.GoUserActions (IdUser, IdGoController, ActionNumberTotal)
+VALUES (1, 1, 7);
 ```
 
 For a local server with a self-signed certificate, its connection settings may need `TrustServerCertificate=true`. Use a properly configured certificate for a deployed server.
