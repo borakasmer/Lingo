@@ -3,11 +3,11 @@
 </p>
 
 <p align="center">
-  <img src="assets/readme/hero.png" alt="Lingo — LINQ-inspired intent. Explicit SQL behavior. A lightweight SQL helper for Go." width="100%">
+  <img src="assets/readme/hero.png" alt="Lingo: LINQ-inspired intent. Explicit SQL behavior. A lightweight SQL helper for Go." width="100%">
 </p>
 
 <p align="center"><strong>A LINQ-inspired SQL helper for Go and SQL Server.</strong><br>
-Generic repositories, composable filters, changed-field updates, and explicit transaction control — built on <code>database/sql</code>.</p>
+Generic repositories, composable filters, changed-field updates, and explicit transaction control, built on <code>database/sql</code>.</p>
 
 <p align="center">
   <a href="#start-with-a-paged-select">Paged SELECT</a> ·
@@ -24,11 +24,11 @@ Generic repositories, composable filters, changed-field updates, and explicit tr
 
 <a id="overview"></a>
 
-## Overview — What Lingo Offers
+## Overview: What Lingo Offers
 
-![Overview — What Lingo Offers](assets/readme/section-overview.png)
+![Overview: What Lingo Offers](assets/readme/section-overview.png)
 
-| 🧩 Compose | 🛠️ Update | ⚙️ Control |
+| Compose | Update | Control |
 |---|---|---|
 | Nested **AND / OR** expressions | Write explicit fields or compare **Old / New** | One shared SQL connection pool |
 | Parameterized filter values | Skip identity updates | Standard `context.Context` |
@@ -52,9 +52,9 @@ The idea is simple: express the query intent in Go, keep the generated SQL under
 
 <a id="start-with-a-paged-select"></a>
 
-## Paged SELECT — Pagination & Sorting
+## Paged SELECT: Pagination & Sorting
 
-![Paged SELECT — Pagination & Sorting](assets/readme/section-start-with-a-paged-select.png)
+![Paged SELECT: Pagination & Sorting](assets/readme/section-start-with-a-paged-select.png)
 
 **Read four users at a time. Let SQL Server do the paging.** Start with a familiar SELECT before composing multi-table JOINs.
 
@@ -134,7 +134,7 @@ The SELECT column order follows the mapped model fields; the example above follo
 ]
 ```
 
-IDs and values above are illustrative: page 2 means the next four rows in the sorted result, not necessarily IDs 5–8. Prefer a unique sort key such as `Id` for stable ordering. Separate requests can still see changes if rows are inserted or deleted between them. If `sortBy` is blank, the demo uses `Id`; `ascending` controls the direction.
+IDs and values above are illustrative: page 2 means the next four rows in the sorted result, not necessarily IDs 5-8. Prefer a unique sort key such as `Id` for stable ordering. Separate requests can still see changes if rows are inserted or deleted between them. If `sortBy` is blank, the demo uses `Id`; `ascending` controls the direction.
 
 <a id="paging--sorting--filters"></a>
 
@@ -182,9 +182,9 @@ The default/cap normalization above belongs to `GetAllWithPaging`; direct `FindM
 
 <a id="join-tables-keep-the-sql-explicit"></a>
 
-## JOIN Queries — Three Tables, One SELECT
+## JOIN Queries: Three Tables, One SELECT
 
-![JOIN Queries — Three Tables, One SELECT](assets/readme/section-join-tables-keep-the-sql-explicit.png)
+![JOIN Queries: Three Tables, One SELECT](assets/readme/section-join-tables-keep-the-sql-explicit.png)
 
 **Which customer ordered which product? Three tables. Two INNER JOINs. One SQL query.**
 
@@ -447,9 +447,9 @@ Every JOIN field uses `alias.Field` and is checked against participating model m
 
 <a id="quick-start"></a>
 
-## Quick Start — Run the Demo
+## Quick Start: Run the Demo
 
-![Quick Start — Run the Demo](assets/readme/section-quick-start.png)
+![Quick Start: Run the Demo](assets/readme/section-quick-start.png)
 
 #### 1. Prepare the project
 
@@ -637,7 +637,7 @@ type Repository[T any] struct {
 }
 ```
 
-`T` is a type parameter: replace it with the model the repository should read or write. `any` is the Go constraint; the constructor additionally checks at runtime that the model is a supported flat, non-pointer struct.
+`T` is a type parameter: replace it with the model the repository should read or write. `any` is the Go constraint; the constructor also checks at runtime that the model is a supported flat, non-pointer struct.
 
 | Constructed repository | What `T` means | List result type |
 |---|---|---|
@@ -699,9 +699,9 @@ A `ProductRepository` can follow the same pattern with `Repository[Product]`. Th
 
 <a id="compose-your-query"></a>
 
-## Query Filters — Combine AND / OR
+## Query Filters: Combine AND / OR
 
-![Query Filters — Combine AND / OR](assets/readme/section-compose-your-query.png)
+![Query Filters: Combine AND / OR](assets/readme/section-compose-your-query.png)
 
 #### Gender matches **AND** (older than the limit **OR** name contains text)
 
@@ -761,9 +761,9 @@ For an untyped `nil` value, `OpEq` produces `IS NULL` and `OpNe` produces `IS NO
 
 <a id="update-only-what-changed"></a>
 
-## Changed-field Updates — Write Only the Differences
+## Changed-field Updates: Write Only the Differences
 
-![Changed-field Updates — Write Only the Differences](assets/readme/section-update-only-what-changed.png)
+![Changed-field Updates: Write Only the Differences](assets/readme/section-update-only-what-changed.png)
 
 #### Full models in. Only changed columns in SQL.
 
@@ -920,9 +920,9 @@ affected, err := repo.BatchUpdate(ctx, []Repository.UpdateItem{
 
 <a id="insert-multiple-rows"></a>
 
-## Bulk INSERT — Multiple Rows per Statement
+## Bulk INSERT: Multiple Rows per Statement
 
-![Bulk INSERT — Multiple Rows per Statement](assets/readme/section-insert-multiple-rows.png)
+![Bulk INSERT: Multiple Rows per Statement](assets/readme/section-insert-multiple-rows.png)
 
 ```go
 affected, err := repo.BulkInsertBatched(ctx, []Models.Person{
@@ -948,13 +948,13 @@ Create the SQL table type and stored procedure first. Use a dedicated row model 
 
 <a id="delete-with-filter"></a>
 
-## Filtered DELETE — Remove Matching Rows
+## Filtered DELETE: Remove Matching Rows
 
-![Filtered DELETE — Remove Matching Rows](assets/readme/section-delete-with-filter.png)
+![Filtered DELETE: Remove Matching Rows](assets/readme/section-delete-with-filter.png)
 
 **Delete all users whose `Id >= 40` in one SQL statement.** `DeleteWhere` performs a permanent DELETE, not a soft delete. It does not add an `IsDeleted` predicate: matching active and already soft-deleted rows are both eligible.
 
-![Animated filtered DELETE: keep IDs 38 and 39, remove IDs 40–42, and return deletedCount 3](assets/readme/delete-flow.gif)
+![Animated filtered DELETE: keep IDs 38 and 39, remove IDs 40-42, and return deletedCount 3](assets/readme/delete-flow.gif)
 
 The animation uses illustrative rows. [View the static diagram](assets/readme/delete.png).
 
@@ -1023,9 +1023,9 @@ The count above is illustrative. This endpoint permanently removes every matchin
 
 <a id="explore-with-swagger"></a>
 
-## Swagger — Explore the Endpoints
+## Swagger: Explore the Endpoints
 
-![Swagger — Explore the Endpoints](assets/readme/section-explore-with-swagger.png)
+![Swagger: Explore the Endpoints](assets/readme/section-explore-with-swagger.png)
 
 The included demo uses `net/http` and your generic repository through a thin `UserRepository` / `UserHandler` layer.
 
@@ -1057,9 +1057,9 @@ The POST update and DELETE endpoints modify the demo data. A zero affected-row c
 
 <a id="api-at-a-glance"></a>
 
-## API Reference — Methods & Return Types
+## API Reference: Methods & Return Types
 
-![API Reference — Methods & Return Types](assets/readme/section-api-at-a-glance.png)
+![API Reference: Methods & Return Types](assets/readme/section-api-at-a-glance.png)
 
 | Method | Purpose | Result |
 |---|---|---|
@@ -1152,5 +1152,3 @@ For the legacy SQL Server certificate error `x509: negative serial number`, the 
 ---
 
 Built by **[Bora Kaşmer](https://github.com/borakasmer)** · [borakasmer.com](https://borakasmer.com/)
-
-*Typed models. Readable intent. Explicit SQL behavior.*
